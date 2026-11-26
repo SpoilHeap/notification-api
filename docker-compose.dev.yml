@@ -1,0 +1,16 @@
+# Run the production image locally: docker compose -f docker-compose.dev.yml up --build
+# Then open http://localhost:8080/ (fake Ingress identity headers are injected in Development).
+services:
+  notification-api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Ingress__DevFakeIngress: "true"
+      Storage__DataPath: /data
+    volumes:
+      - notification-api-data:/data
+
+volumes:
+  notification-api-data:

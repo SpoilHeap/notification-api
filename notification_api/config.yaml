@@ -1,0 +1,28 @@
+# HA add-on configuration (spec §9.2). The image is prebuilt by .github/workflows/release.yml.
+# `version` must match the git tag (vX.Y.Z) and the image tag; release.yml enforces this.
+name: Notification API
+version: "0.1.0"
+slug: notification_api
+description: Send Telegram and SMS notifications from Home Assistant to contacts and groups.
+url: https://github.com/SpoilHeap/notification-api
+arch:
+  - amd64
+  - aarch64
+image: ghcr.io/spoilheap/notification-api-{arch}
+# init: false because the image has no s6-overlay. startup (application) and boot (auto) use the defaults.
+init: false
+
+# Web UI only through Ingress (ADR 0003). No LAN port. panel_admin defaults to true, so only HA
+# administrators see the panel. The add-on linter rejects stating the default explicitly.
+ingress: true
+ingress_port: 8080
+panel_icon: mdi:message-alert
+panel_title: Notifications
+
+# Needed to publish Supervisor discovery for the HA integration (spec §9.4).
+hassio_api: true
+discovery:
+  - notification_api
+
+# Health is reported through the image's Docker HEALTHCHECK (`--healthcheck` mode), which the
+# Supervisor watchdog uses. The `watchdog` key is obsolete according to the add-on linter.

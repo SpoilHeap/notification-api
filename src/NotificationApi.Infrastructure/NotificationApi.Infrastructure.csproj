@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Infrastructure: EF Core/SQLite, providers, Supervisor, HA webhook. Implements Application ports. -->
+  <ItemGroup>
+    <ProjectReference Include="..\NotificationApi.Application\NotificationApi.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NotificationApi.Infrastructure.Tests" />
+  </ItemGroup>
+</Project>

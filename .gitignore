@@ -1,0 +1,31 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+
+# Tests / coverage
+TestResults/
+coverage/
+*.coverage
+*.cobertura.xml
+
+# Local app data (SQLite DB, Data Protection keys) when running outside the add-on
+.data/
+
+# IDEs
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Throwaway spikes stay local. The Supervisor scans this repo for add-on
+# config.yaml files, so the spike add-on must never be pushed.
+spikes/

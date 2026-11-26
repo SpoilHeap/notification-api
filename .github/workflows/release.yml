@@ -1,0 +1,113 @@
+name: Release
+
+# Tag vX.Y.Z → verify version, run CI, push multi-arch images to GHCR, create a GitHub Release.
+# The add-on's config.yaml `version` must equal the tag; HA uses it to offer the update.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_PREFIX: ghcr.io/spoilheap/notification-api
+
+jobs:
+  verify-version:
+    name: Verify add-on version matches tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          addon="$(yq -r '.version' notification_api/config.yaml)"
+          if [[ "$tag" != "$addon" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match notification_api/config.yaml version $addon"
+            exit 1
+          fi
+          heading="$(grep -F "## [$tag]" notification_api/CHANGELOG.md | head -1)"
+          [[ -n "$heading" ]] || { echo "::error::CHANGELOG.md has no '## [$tag]' section"; exit 1; }
+          if grep -qi "unreleased" <<<"$heading"; then
+            echo "::error::CHANGELOG.md section for $tag is still marked Unreleased; add the release date"
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: CI
+    needs: verify-version
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Push image (${{ matrix.arch }})
+    needs: [verify-version, ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: aarch64
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.arch }}:${{ needs.verify-version.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.arch }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.verify-version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=Notification API (${{ matrix.arch }})
+            io.hass.type=addon
+            io.hass.arch=${{ matrix.arch }}
+            io.hass.version=${{ needs.verify-version.outputs.version }}
+          provenance: false
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+          cache-to: type=gha,scope=release-${{ matrix.arch }},mode=max
+
+  github-release:
+    name: GitHub Release
+    needs: [verify-version, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Extract changelog section
+        run: |
+          v="${{ needs.verify-version.outputs.version }}"
+          awk -v v="$v" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' notification_api/CHANGELOG.md > release-notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag

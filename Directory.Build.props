@@ -1,0 +1,31 @@
+<Project>
+  <!-- Shared build settings for every project (engineering_standards.md §1, §3). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591: XML docs are required only where intent isn't obvious, not on every public member. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- The add-on image targets these RIDs (Dockerfile -a $TARGETARCH). Declaring them puts the
+         RID-specific packages (e.g. native SQLite) in the lock files, so the image build can restore
+         in locked mode. -->
+    <RuntimeIdentifiers Condition="!$(MSBuildProjectName.EndsWith('Tests'))">linux-x64;linux-arm64</RuntimeIdentifiers>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Tests'))">
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+</Project>

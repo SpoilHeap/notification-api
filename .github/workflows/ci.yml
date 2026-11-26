@@ -1,0 +1,138 @@
+name: CI
+
+# engineering_standards.md §8. Also called by release.yml before images are pushed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  CI: "true"
+
+jobs:
+  build-test:
+    name: Build, test, coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore (locked)
+        run: |
+          dotnet restore --locked-mode
+          dotnet tool restore
+
+      - name: Format check
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Build (warnings are errors)
+        run: dotnet build -c Release --no-restore
+
+      - name: Test with coverage
+        run: >
+          dotnet test -c Release --no-build
+          --coverage --coverage-output-format cobertura
+          --results-directory TestResults
+
+      - name: Merge coverage
+        if: ${{ !cancelled() }}
+        run: >
+          dotnet tool run reportgenerator
+          -reports:'TestResults/*.cobertura.xml'
+          -targetdir:coverage
+          -reporttypes:'JsonSummary;MarkdownSummaryGithub;Html'
+          -filefilters:'-**/obj/**;-*.g.cs;-*.generated.cs'
+
+      - name: Coverage summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [[ -f coverage/SummaryGithub.md ]]; then
+            cat coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Coverage gate (80% overall, 90% Domain + Application)
+        run: scripts/check-coverage.sh coverage/Summary.json
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+
+      - name: Vulnerable packages
+        run: |
+          dotnet list package --vulnerable --include-transitive | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then
+            echo "::error::Vulnerable packages found"
+            exit 1
+          fi
+
+      # TODO(first API endpoint): diff the generated OpenAPI document against the checked-in
+      # openapi.json (engineering_standards.md §8 step 5). Skipped until /api/v1 exists.
+      - name: OpenAPI contract diff (not yet enabled)
+        if: false
+        run: echo "enable once /api/v1 exists"
+
+  docker:
+    name: Docker build, smoke test, scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build amd64 + arm64 (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          provenance: false
+          cache-from: type=gha,scope=ci
+          cache-to: type=gha,scope=ci,mode=max
+
+      - name: Load amd64 image for testing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: notification-api:ci
+          provenance: false
+          cache-from: type=gha,scope=ci
+
+      - name: Smoke test image
+        run: scripts/smoke-test-image.sh notification-api:ci
+
+      - name: Trivy scan (fail on fixable HIGH/CRITICAL)
+        # Pinned by commit SHA (v0.36.0): this action's tags were re-created in March 2026.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: notification-api:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  addon-lint:
+    name: Add-on lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: frenck/action-app-linter@v2
+        with:
+          path: ./notification_api

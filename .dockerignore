@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/TestResults/
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+.data/
+spikes/
+docs/
+notification_api/
+coverage/
+*.md
