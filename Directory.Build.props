@@ -16,11 +16,9 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
 
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <!-- The add-on image targets these RIDs (Dockerfile -a $TARGETARCH). Declaring them puts the
-         RID-specific packages (e.g. native SQLite) in the lock files, so the image build can restore
-         in locked mode. -->
-    <RuntimeIdentifiers Condition="!$(MSBuildProjectName.EndsWith('Tests'))">linux-x64;linux-arm64</RuntimeIdentifiers>
+    <!-- No NuGet lock files: the SDK injects packages versioned to its own runtime patch, so lock
+         files break whenever SDK patches differ between machines (ADR 0011). Versions are pinned
+         by Central Package Management with transitive pinning instead. -->
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 

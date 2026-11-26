@@ -119,4 +119,5 @@ The HA integration (Python, installed through HACS) lives in a separate repo, `n
   [0007 Telegram and SMS](docs/adr/0007-telegram-and-sms-for-v1.md) ·
   [0008 Clean Architecture](docs/adr/0008-clean-architecture-layers.md) ·
   [0009 Container runs as root](docs/adr/0009-container-runs-as-root.md) ·
-  [0010 xUnit v3 on MTP](docs/adr/0010-xunit-v3-on-microsoft-testing-platform.md)
+  [0010 xUnit v3 on MTP](docs/adr/0010-xunit-v3-on-microsoft-testing-platform.md) ·
+  [0011 No NuGet lock files](docs/adr/0011-no-nuget-lock-files.md)

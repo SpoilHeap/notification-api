@@ -30,9 +30,9 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Restore (locked)
+      - name: Restore
         run: |
-          dotnet restore --locked-mode
+          dotnet restore
           dotnet tool restore
 
       - name: Format check
@@ -48,7 +48,7 @@ jobs:
           --results-directory TestResults
 
       - name: Merge coverage
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && hashFiles('TestResults/*.cobertura.xml') != '' }}
         run: >
           dotnet tool run reportgenerator
           -reports:'TestResults/*.cobertura.xml'

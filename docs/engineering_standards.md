@@ -15,7 +15,7 @@ The aim is **professional and pragmatic**: clean boundaries and thorough tests, 
 | SDK pinning | `global.json` pins the SDK feature band (`rollForward: latestFeature`) |
 | Package versions | **Central Package Management** (`Directory.Packages.props`). No versions in individual `.csproj` files. |
 | Shared build settings | `Directory.Build.props`: nullable, analyzers, `TreatWarningsAsErrors=true`, deterministic builds |
-| Lock files | `RestorePackagesWithLockFile=true`, with `--locked-mode` in CI |
+| Lock files | **None.** Versions are pinned by Central Package Management with transitive pinning. SDK-injected packages make lock files depend on the SDK patch ([ADR 0011](adr/0011-no-nuget-lock-files.md)). |
 
 ---
 
@@ -210,7 +210,7 @@ Required coverage of behaviour, not just lines:
 ## 8. CI/CD pipeline (GitHub Actions)
 
 **On every PR and push to `main`:**
-1. Restore (locked mode) → `dotnet format --verify-no-changes` → build (warnings as errors).
+1. Restore → `dotnet format --verify-no-changes` → build (warnings as errors).
 2. Unit + architecture tests.
 3. Integration + acceptance tests.
 4. Coverage report + gate (§4.6), published as a PR comment / artifact.

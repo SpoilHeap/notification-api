@@ -11,11 +11,10 @@ WORKDIR /src
 # Restore with the FULL source present. Restoring with only the .csproj files (the usual
 # layer-caching trick) and then publishing with --no-restore silently drops Blazor's
 # framework assets, so _framework/blazor.web.js 404s (spec §13, engineering_standards.md §8).
-# Locked mode: the restore must match packages.lock.json (the RIDs are declared in Directory.Build.props).
 COPY . .
 RUN dotnet publish src/NotificationApi.Web/NotificationApi.Web.csproj \
       -c Release -a "$TARGETARCH" --no-self-contained -o /out \
-      -p:ContinuousIntegrationBuild=true -p:RestoreLockedMode=true
+      -p:ContinuousIntegrationBuild=true
 
 # Chiseled = minimal Ubuntu, no shell or package manager.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled
