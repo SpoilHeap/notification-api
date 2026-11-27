@@ -1,6 +1,9 @@
-using Microsoft.AspNetCore.DataProtection;
 using NotificationApi.Application;
+using NotificationApi.Application.ApiAccess;
 using NotificationApi.Infrastructure;
+using NotificationApi.Infrastructure.Persistence;
+using NotificationApi.Web.Api;
+using NotificationApi.Web.Authentication;
 using NotificationApi.Web.Components;
 using NotificationApi.Web.Hosting;
 using NotificationApi.Web.Ingress;
@@ -14,31 +17,46 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.AddJsonConsole(o => o.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ ");
 
+// Infrastructure also sets up Data Protection, with keys in <data path>/keys.
 builder.Services
     .AddApplication()
     .AddInfrastructure(builder.Configuration)
-    .AddIngress(builder.Configuration, builder.Environment);
-
-// Data Protection keys live in /data so encrypted secrets and antiforgery tokens survive restarts and updates.
-var storage = builder.Configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new StorageOptions();
-builder.Services.AddDataProtection()
-    .SetApplicationName("NotificationApi")
-    .PersistKeysToFileSystem(Directory.CreateDirectory(storage.KeysPath));
+    .AddIngress(builder.Configuration, builder.Environment)
+    .AddNotificationApiAuth()
+    .AddDiscovery(builder.Configuration);
 
 builder.Services.AddRazorComponents(); // Static SSR only: no interactive render modes (ADR 0004).
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(o => o.AddDocumentTransformer((document, _, _) =>
+{
+    document.Info.Title = "Notification API";
+    document.Info.Description = "Used by the Home Assistant integration. Authenticate with Authorization: Bearer <api token>.";
+    return Task.CompletedTask;
+}));
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
+await app.Services.MigrateDatabaseAsync();
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    // Provision the API token before serving, so the UI and discovery never race to create it.
+    // A failure (unreadable token) is reported by discovery and on the Integration page.
+    await scope.ServiceProvider.GetRequiredService<EnsureApiToken>().HandleAsync(CancellationToken.None);
+}
+
 app.UseIngress(); // Must run before routing so PathBase applies to endpoint matching and link generation.
 app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization(); // Fallback policy = deny: every endpoint below opts in explicitly.
 app.UseAntiforgery();
 
-app.MapHealthChecks("/health");
-app.MapOpenApi();
-app.MapStaticAssets();
-app.MapRazorComponents<App>();
+// Anonymous: the Docker HEALTHCHECK (--healthcheck) probes it from inside the container.
+app.MapHealthChecks("/health").AllowAnonymous();
+app.MapApiV1();
+// Contract for the HA integration. Readable through Ingress only, so other add-ons can't enumerate the API.
+app.MapOpenApi().RequireAuthorization(AuthPolicies.Ingress);
+app.MapStaticAssets().RequireAuthorization(AuthPolicies.Ingress);
+app.MapRazorComponents<App>().RequireAuthorization(AuthPolicies.Ingress);
 
 await app.RunAsync();
 return 0;

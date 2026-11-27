@@ -22,6 +22,10 @@ The add-on has no options in this tab.
 The companion integration (`notification-api-ha`, installed through HACS) is discovered automatically
 once the add-on is running. It provides `notify.*` entities and the `notification_api.send` action.
 
+If Home Assistant doesn't offer the integration under **Settings → Devices & services → Discovered**,
+open the add-on's **Integration** page. It shows whether discovery worked and, for manual setup, the
+host, port and API token (click **Reveal API token**). Treat the token like a password.
+
 ## Data and backups
 
 Contacts, settings and encrypted credentials are stored in the add-on's `/data`, which is included

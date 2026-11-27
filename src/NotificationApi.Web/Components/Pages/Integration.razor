@@ -1,0 +1,106 @@
+@page "/integration"
+@using System.Security.Claims
+@using NotificationApi.Application.ApiAccess
+@using NotificationApi.Application.Discovery
+@inject GetIntegrationDetails GetIntegrationDetails
+@inject RevealApiToken RevealApiToken
+
+<PageTitle>Integration · Notification API</PageTitle>
+
+<h1>Home Assistant integration</h1>
+
+<section>
+  <h2>Discovery</h2>
+  <p>
+    The add-on announces itself to Home Assistant through Supervisor discovery on every start.
+    Home Assistant then offers <em>Notification API</em> under <strong>Settings → Devices &amp; services → Discovered</strong>.
+  </p>
+  <dl class="details">
+    <dt>Status</dt>
+    <dd data-testid="discovery-state">@StateText(_details.Discovery.State)</dd>
+    @if (_details.Discovery.Uuid is { } uuid)
+    {
+      <dt>Discovery id</dt>
+      <dd><code>@uuid</code></dd>
+    }
+    @if (_details.Discovery.Attempts > 0)
+    {
+      <dt>Attempts</dt>
+      <dd>@_details.Discovery.Attempts</dd>
+    }
+    @if (_details.Discovery.At is { } at)
+    {
+      <dt>Last update</dt>
+      <dd>@at.ToString("u", System.Globalization.CultureInfo.InvariantCulture)</dd>
+    }
+    @if (_details.Discovery.Error is { } error)
+    {
+      <dt>@(_details.Discovery.State == DiscoveryState.Skipped ? "Reason" : "Last error")</dt>
+      <dd data-testid="discovery-error">@error</dd>
+    }
+  </dl>
+</section>
+
+<section>
+  <h2>Manual setup</h2>
+  <p>If Home Assistant didn't discover the add-on, add the <em>Notification API</em> integration by hand with these values.</p>
+  <dl class="details">
+    <dt>Host</dt>
+    <dd><code>@_details.Host</code></dd>
+    <dt>Port</dt>
+    <dd><code>@_details.Port</code></dd>
+    <dt>API token</dt>
+    <dd>
+      @if (_token is not null)
+      {
+        <code data-testid="api-token">@_token</code>
+        <p class="hint">Treat this like a password. Anyone on the Supervisor network who has it can send notifications.</p>
+      }
+      else
+      {
+        <form method="post" @formname="reveal-api-token" @onsubmit="RevealAsync">
+          <AntiforgeryToken />
+          <button type="submit">Reveal API token</button>
+        </form>
+        @if (_revealError is not null)
+        {
+          <p class="error" data-testid="reveal-error">@_revealError</p>
+        }
+      }
+    </dd>
+  </dl>
+  @* TODO(token rotation): add a "Rotate token" action that replaces the token and re-publishes discovery. Out of scope for now. *@
+</section>
+
+@code {
+  private IntegrationDetails _details = default!;
+  private string? _token;
+  private string? _revealError;
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  protected override void OnInitialized() => _details = GetIntegrationDetails.Handle();
+
+  private async Task RevealAsync()
+  {
+    var haUserId = HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+    var result = await RevealApiToken.HandleAsync(haUserId, HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      _token = result.Value.Value;
+      HttpContext.Response.Headers.CacheControl = "no-store";
+    }
+    else
+    {
+      _revealError = result.Error.Message;
+    }
+  }
+
+  private static string StateText(DiscoveryState state) => state switch
+  {
+    DiscoveryState.Published => "Published to Home Assistant",
+    DiscoveryState.Skipped => "Skipped",
+    DiscoveryState.Failed => "Failed",
+    _ => "Pending",
+  };
+}

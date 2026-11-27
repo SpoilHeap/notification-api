@@ -4,12 +4,6 @@ namespace NotificationApi.Web.Ingress;
 
 internal static class IngressRequest
 {
-    /// <summary>Set by the middleware once a request is known to come through HA Ingress.</summary>
-    internal const string TrustedItemKey = "NotificationApi.Ingress.Trusted";
-
-    public static bool IsTrusted(HttpContext context) =>
-        context.Items.TryGetValue(TrustedItemKey, out var value) && value is true;
-
     /// <summary>
     /// True when the remote address is the Ingress proxy. Kestrel listens dual-stack, so IPv4
     /// clients can appear as IPv4-mapped IPv6 (<c>::ffff:172.30.32.2</c>) and must be unwrapped.

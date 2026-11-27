@@ -16,7 +16,7 @@ notification-api/
 ├── tests/
 │   ├── NotificationApi.{Domain,Application,Infrastructure,Web}.Tests/
 │   └── NotificationApi.ArchitectureTests/
-├── docs/                                # spec, engineering standards, brief, ADRs
+├── docs/                                # spec, engineering standards, brief, ADRs, openapi.json (API contract)
 ├── scripts/
 │   ├── check-coverage.sh                # coverage gate
 │   └── smoke-test-image.sh              # runs the built image and checks /health and blazor.web.js
@@ -27,7 +27,7 @@ notification-api/
 ├── docker-compose.dev.yml               # run the production image locally
 ├── NotificationApi.slnx
 ├── Directory.Build.props / Directory.Packages.props
-├── dotnet-tools.json                    # pinned repo-local tools (ReportGenerator)
+├── dotnet-tools.json                    # pinned repo-local tools (ReportGenerator, dotnet-ef)
 └── global.json
 ```
 
@@ -37,7 +37,7 @@ notification-api/
 
 - .NET SDK 10.0.4xx (pinned in `global.json`). If you install it with mise, make sure plain `dotnet` on your `PATH` resolves to that SDK: `dotnet --version`.
 - Docker with buildx, for the image and `docker-compose.dev.yml`.
-- Repo-local tools (ReportGenerator) are pinned in `dotnet-tools.json`. Run `dotnet tool restore` once.
+- Repo-local tools (ReportGenerator, `dotnet-ef`) are pinned in `dotnet-tools.json`. Run `dotnet tool restore` once.
 
 ## Run locally
 
@@ -50,11 +50,32 @@ This uses the Development environment and listens on http://localhost:8080. `app
 - `Storage:DataPath` to `../../.data`, so the SQLite database and Data Protection keys go in `.data/` at the repo root (gitignored).
 - `Ingress:DevFakeIngress: true`, which injects fake HA identity headers and treats every request as coming from Ingress. Startup fails if this is enabled outside Development.
 
+On startup the app applies any pending database migrations and generates the API token if there isn't one yet. Supervisor discovery is skipped (logged at Information) because `SUPERVISOR_TOKEN` is only set inside HA OS. To call the API locally, open http://localhost:8080/integration, click **Reveal API token**, then:
+
+```sh
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/ping
+```
+
+Without fake Ingress (any environment other than Development), the UI answers 403 unless the request comes from the Ingress proxy (`Ingress:TrustedProxyAddress`, default `172.30.32.2`). `/health` is always anonymous.
+
 To run the production image instead:
 
 ```sh
 docker compose -f docker-compose.dev.yml up
 ```
+
+## Database migrations
+
+EF Core migrations live in `src/NotificationApi.Infrastructure/Persistence/Migrations` and are applied automatically on startup. After changing an entity or an `IEntityTypeConfiguration`, add a migration and commit it:
+
+```sh
+dotnet tool restore
+dotnet ef migrations add <Name> \
+  --project src/NotificationApi.Infrastructure --startup-project src/NotificationApi.Infrastructure \
+  --output-dir Persistence/Migrations
+```
+
+The tools use `DesignTimeDbContextFactory`, so they don't start the web host. `MigrationTests.Model_has_no_pending_changes` fails if you forget the migration.
 
 ## Test
 
@@ -72,6 +93,8 @@ dotnet tool run reportgenerator -reports:'TestResults/*.cobertura.xml' -targetdi
   -reporttypes:'JsonSummary;Html' -filefilters:'-**/obj/**;-*.g.cs;-*.generated.cs'
 scripts/check-coverage.sh coverage/Summary.json   # ≥ 80% overall, ≥ 90% Domain + Application
 ```
+
+The checked-in API contract `docs/openapi.json` is compared with the generated OpenAPI document by `OpenApiTests`. After an intended API change, regenerate it with `UPDATE_OPENAPI_CONTRACT=1 dotnet test` and commit the diff.
 
 Source-generated code is excluded from coverage. CI runs exactly these commands. Open `coverage/index.html` for the report.
 
@@ -102,7 +125,7 @@ Warnings are errors (`Directory.Build.props`), so the build fails on analyzer fi
 2. Add `https://github.com/SpoilHeap/notification-api`.
 3. Install **Notification API** and start it. Only HA admins see its panel.
 
-The HA integration (Python, installed through HACS) lives in a separate repo, `notification-api-ha` (not created yet). Once both are installed, HA discovers the add-on through Supervisor discovery and sets up the integration with no manual token entry.
+The HA integration (Python, installed through HACS) lives in a separate repo, `notification-api-ha` (not created yet). Once both are installed, HA discovers the add-on through Supervisor discovery and sets up the integration with no manual token entry. The add-on's **Integration** page shows the discovery status, and the host, port and API token for manual setup if discovery fails.
 
 ## Docs
 
@@ -120,4 +143,9 @@ The HA integration (Python, installed through HACS) lives in a separate repo, `n
   [0008 Clean Architecture](docs/adr/0008-clean-architecture-layers.md) ·
   [0009 Container runs as root](docs/adr/0009-container-runs-as-root.md) ·
   [0010 xUnit v3 on MTP](docs/adr/0010-xunit-v3-on-microsoft-testing-platform.md) ·
-  [0011 No NuGet lock files](docs/adr/0011-no-nuget-lock-files.md)
+  [0011 No NuGet lock files](docs/adr/0011-no-nuget-lock-files.md) ·
+  [0012 API token hashed and encrypted](docs/adr/0012-api-token-hashed-and-encrypted.md)
+
+## Licence
+
+[MIT](LICENSE)

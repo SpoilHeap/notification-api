@@ -81,14 +81,14 @@ Web ──► Application ──► Domain
 ### 2.5 Web
 
 - Minimal API endpoints grouped per feature (`MapGroup("/api/v1")`). Request and response contracts are separate records from domain types.
-- **OpenAPI** document generated with `Microsoft.AspNetCore.OpenApi`, and the checked-in `openapi.json` is diffed in CI (contract stability for the HA integration).
+- **OpenAPI** document generated with `Microsoft.AspNetCore.OpenApi`, and the checked-in `docs/openapi.json` is diffed against it by a test (`OpenApiTests`, so it runs in CI's test step; contract stability for the HA integration). The document is served at `/openapi/v1.json` through Ingress only, not to other callers on the Supervisor network.
 - Blazor Static SSR UI. Components are thin and call Application use cases. Antiforgery is on.
 - Two authentication schemes (`Ingress`, `ApiToken`). Every endpoint has an explicit auth policy, with fallback policy = deny.
 - Hosted services (`BackgroundService`) are thin loops that call Application use cases (`ProcessDueDeliveries`, `PollTelegramUpdates`, `PurgeExpiredLogs`).
 
 ### 2.6 Configuration
 
-- Options pattern with `ValidateDataAnnotations()` / `ValidateOnStart()`. The app fails fast on invalid config.
+- Options pattern with `ValidateDataAnnotations()` (or a hand-written `IValidateOptions<T>` / `Validate(...)` for rules annotations can't express) and `ValidateOnStart()`. The app fails fast on invalid config.
 - Bootstrap settings (data path, port, trusted proxy IP, log level) come from env vars / add-on options. Runtime settings (retention, retries, provider credentials) live in the DB and are edited in the UI.
 
 ---
@@ -187,7 +187,7 @@ Required coverage of behaviour, not just lines:
 ## 6. Security baseline
 
 - Fallback authorisation policy = deny. Every endpoint opts into a scheme explicitly.
-- API token: 256-bit random, stored **hashed** (SHA-256) in the DB. The plaintext goes only to discovery. Constant-time comparison.
+- API token: 256-bit random, stored **hashed** (SHA-256) in the DB and verified against the hash with a constant-time comparison. A Data Protection-encrypted copy lets discovery re-publish the same token on every start and the Integration page reveal it for manual setup ([ADR 0012](adr/0012-api-token-hashed-and-encrypted.md)). The plaintext goes only to discovery and that page, never to logs.
 - Ingress scheme trusts the headers only from the configured proxy IP.
 - Webhook calls to HA are signed with the shared secret.
 - Antiforgery on all UI forms. Output encoding via Razor defaults. No `MarkupString` with user input.
@@ -214,11 +214,11 @@ Required coverage of behaviour, not just lines:
 2. Unit + architecture tests.
 3. Integration + acceptance tests.
 4. Coverage report + gate (§4.6), published as a PR comment / artifact.
-5. OpenAPI diff against the checked-in `openapi.json` (fails on an unacknowledged change).
+5. OpenAPI diff against the checked-in `docs/openapi.json` (fails on an unacknowledged change). Runs as `OpenApiTests` in step 3.
 6. Vulnerable package check.
 7. Docker build for `amd64` + `aarch64` (no push on PRs) + Trivy scan.
    - **Restore with the full source present.** Restoring with only the `.csproj` (the usual layer-caching trick) and then publishing with `--no-restore` silently drops Blazor's framework assets (`_framework/blazor.web.js` → 404). Found in the spike on 2026-11-25.
-   - **Image smoke test:** `scripts/smoke-test-image.sh` runs the built image and asserts that `_framework/blazor.web.js` returns 200 with a JavaScript content type (catches the issue above). In-process tests can't catch it, because `WebApplicationFactory` runs from the build output.
+   - **Image smoke test:** `scripts/smoke-test-image.sh` runs the built image twice. With production settings it checks that `/health` is 200, the UI is 403 outside Ingress, `/api/v1/ping` is 401 without a token, and discovery is skipped. With `DevFakeIngress` it asserts that `_framework/blazor.web.js` returns 200 with a JavaScript content type (catches the issue above). In-process tests can't catch that one, because `WebApplicationFactory` runs from the build output.
 8. Add-on lint (`frenck/action-addon-linter`).
 
 **On a tag `vX.Y.Z`:**
