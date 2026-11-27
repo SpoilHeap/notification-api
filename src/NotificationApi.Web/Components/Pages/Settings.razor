@@ -1,0 +1,122 @@
+@page "/settings"
+@using NotificationApi.Application.Common
+@using NotificationApi.Application.Settings
+@inject GetSmsToSettings GetSmsToSettings
+@inject SaveSmsToSettings SaveSmsToSettings
+@inject RemoveSmsToSettings RemoveSmsToSettings
+
+<PageTitle>Settings · Notification API</PageTitle>
+
+<header class="page-header">
+  <h1>Settings</h1>
+</header>
+
+@if (Saved is not null)
+{
+  <p class="notice success" role="status" data-testid="flash">@SavedText(Saved)</p>
+}
+
+<section class="card">
+  <h2>SMS.to</h2>
+  <p>
+    SMS messages are sent through <a href="https://sms.to" target="_blank" rel="noopener noreferrer">SMS.to</a>.
+    Create an API key in your SMS.to account (<strong>Developers → API keys</strong>) and enter it here.
+    The key is stored encrypted and is never shown again.
+  </p>
+  <dl class="details">
+    <dt>Status</dt>
+    @if (_smsTo.Configured)
+    {
+      <dd><span class="badge success" data-testid="smsto-state">Configured</span></dd>
+      <dt>API key</dt>
+      <dd><code data-testid="smsto-key">@_smsTo.MaskedApiKey</code></dd>
+    }
+    else
+    {
+      <dd><span class="badge warning" data-testid="smsto-state">Not configured</span> <span class="hint">SMS deliveries fail until an API key is saved.</span></dd>
+    }
+    <dt>Sender ID</dt>
+    <dd data-testid="smsto-sender">@(_smsTo.SenderId ?? "Account default")</dd>
+  </dl>
+
+  <form method="post" @formname="save-smsto" @onsubmit="SaveAsync" class="stack">
+    <AntiforgeryToken />
+    <div class="field">
+      <label for="smsto-api-key">@(_smsTo.Configured ? "Replace the API key" : "API key")</label>
+      @* The key is never rendered back into the page, not even after a validation error. *@
+      <input id="smsto-api-key" name="SmsTo.ApiKey" type="password" autocomplete="new-password" spellcheck="false"
+             aria-describedby="smsto-api-key-hint error-@SmsToFields.ApiKey" aria-invalid="@FieldError.Invalid(_errors, SmsToFields.ApiKey)" />
+      <p class="hint" id="smsto-api-key-hint">@(_smsTo.Configured ? "Leave blank to keep the current key." : "Required.")</p>
+      <FieldError Errors="_errors" Field="@SmsToFields.ApiKey" />
+    </div>
+    <div class="field">
+      <label for="smsto-sender-id">Sender ID</label>
+      <input id="smsto-sender-id" name="SmsTo.SenderId" value="@SmsTo?.SenderId" maxlength="15" autocomplete="off"
+             aria-describedby="smsto-sender-id-hint error-@SmsToFields.SenderId" aria-invalid="@FieldError.Invalid(_errors, SmsToFields.SenderId)" />
+      <p class="hint" id="smsto-sender-id-hint">What the phone shows as the sender: up to 11 letters or digits, or a phone number. Leave blank for your SMS.to account's default. Some countries require a registered sender ID.</p>
+      <FieldError Errors="_errors" Field="@SmsToFields.SenderId" />
+    </div>
+    <div class="form-actions"><button type="submit">Save SMS.to settings</button></div>
+  </form>
+
+  @if (_smsTo.Configured)
+  {
+    <form method="post" @formname="remove-smsto" @onsubmit="RemoveAsync" class="inline-form">
+      <AntiforgeryToken />
+      <button type="submit" class="secondary">Remove SMS.to settings</button>
+      <span class="hint">SMS deliveries then fail until a key is saved again.</span>
+    </form>
+  }
+</section>
+
+@code {
+  private SmsToSettingsView _smsTo = default!;
+  private IReadOnlyDictionary<string, string[]>? _errors;
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  [SupplyParameterFromQuery] public string? Saved { get; set; }
+
+  [SupplyParameterFromForm(FormName = "save-smsto")] private SmsToForm? SmsTo { get; set; }
+
+  protected override async Task OnInitializedAsync()
+  {
+    _smsTo = await GetSmsToSettings.HandleAsync(HttpContext.RequestAborted);
+    SmsTo ??= new() { SenderId = _smsTo.SenderId };
+  }
+
+  private async Task SaveAsync()
+  {
+    var result = await SaveSmsToSettings.HandleAsync(
+      HttpContext.User.ToAuditActor(), new SaveSmsToSettingsCommand(SmsTo?.ApiKey, SmsTo?.SenderId), HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      PostRedirectGet.SeeOther(HttpContext, "settings?saved=smsto");
+      return;
+    }
+
+    _errors = result.Error.FieldErrors;
+  }
+
+  private async Task RemoveAsync()
+  {
+    await RemoveSmsToSettings.HandleAsync(HttpContext.User.ToAuditActor(), HttpContext.RequestAborted);
+    PostRedirectGet.SeeOther(HttpContext, "settings?saved=smsto-removed");
+  }
+
+  private static string SavedText(string saved) => saved switch
+  {
+    "smsto" => "SMS.to settings saved.",
+    "smsto-removed" => "SMS.to settings removed.",
+    _ => "Saved.",
+  };
+
+  public sealed class SmsToForm
+  {
+    public string? ApiKey { get; set; }
+
+    public string? SenderId { get; set; }
+
+    public override string ToString() => $"SmsToForm {{ ApiKey = (redacted), SenderId = {SenderId} }}";
+  }
+}
