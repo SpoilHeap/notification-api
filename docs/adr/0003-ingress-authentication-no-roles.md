@@ -19,7 +19,7 @@ The API (`/api/v1`) is called by the HA integration, not by a browser, so it nee
 - **No roles.** Everyone who can open the panel has full access. The identity headers are used only to record who made each change in the AuditLog.
 
 **API:**
-- Bearer token. The add-on generates a 256-bit token on first start, stores it hashed (SHA-256), and publishes the plaintext through **Supervisor discovery**. The user never sees it.
+- Bearer token. The add-on generates a 256-bit token on first start, stores it hashed (SHA-256), and publishes the plaintext through **Supervisor discovery**. The user never sees it, except through the manual-setup fallback. [ADR 0012](0012-api-token-hashed-and-encrypted.md) adds an encrypted copy so discovery can re-publish the same token.
 - Kept even on the internal network: it's cheap, and it protects against other add-ons.
 
 Implemented as two `AuthenticationHandler` schemes, `Ingress` and `ApiToken`, with fallback policy = deny. No ASP.NET Identity.

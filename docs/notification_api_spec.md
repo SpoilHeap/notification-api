@@ -88,6 +88,8 @@ Errors: `400` unknown handle or invalid payload, `401` bad token, `422` zero del
 ### 4.2 Lookups
 `GET /recipients`, `GET /notifications/{id}`, `GET /channels`, `GET /health`
 
+`GET /ping` returns `{"ok": true, "version": "…"}`. The integration calls it during setup to check its token.
+
 ### 4.3 Events (API → HA)
 The add-on POSTs to the HA webhook that the integration registered (`http://homeassistant:8123/api/webhook/<id>`).
 v1: `delivery.sent`, `delivery.failed`, `recipients.changed`.
@@ -120,7 +122,7 @@ Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: m
 
 ### 8.1 Web UI: delegated to HA Ingress
 - HA authenticates the user. Ingress proxies the request to the add-on and adds `X-Remote-User-Id`, `X-Remote-User-Name` and `X-Remote-User-Display-Name`.
-- The add-on **only accepts UI requests from the Ingress proxy** (`172.30.32.2`) and rejects everything else. That's what makes trusting the headers safe.
+- The add-on **only accepts UI requests from the Ingress proxy** (`172.30.32.2`) that carry `X-Remote-User-Id`, and rejects everything else with `403`. That's what makes trusting the headers safe.
 - No passwords, no account management and no second login screen.
 
 ### 8.2 Authorisation
@@ -129,7 +131,9 @@ Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: m
 
 ### 8.3 API (`/api/v1`)
 - Still token-protected: it's cheap, and it protects against other add-ons on the internal network.
-- The add-on generates the token on first start and publishes it through **Supervisor discovery**, so the user never sees it.
+- The add-on generates the token on first start and publishes it through **Supervisor discovery** on every start, so the user normally never sees it.
+- It's stored hashed (for verification) and encrypted with Data Protection (so every start re-publishes the same token, and the manual fallback in §9.4 can show it). See [ADR 0012](adr/0012-api-token-hashed-and-encrypted.md).
+- A missing or wrong token gets `401` with `WWW-Authenticate: Bearer` and a `ProblemDetails` body.
 - The API port isn't mapped to the LAN.
 
 ## 9. Deployment on HA OS
@@ -186,7 +190,7 @@ The real file is [`notification_api/config.yaml`](../notification_api/config.yam
 3. HA shows *"New device discovered: Notification API"*, and the integration's `async_step_hassio` takes the config.
 4. The user clicks **Submit**. The integration stores the config, registers its webhook with the API, and creates the entities.
 
-⚠️ Discovery for a **custom** (HACS) integration should work through `async_step_hassio`, but verify this in an early spike. The fallback is a manual config flow, with the token shown in the add-on UI.
+Discovery for a **custom** (HACS) integration works through `async_step_hassio` (spike 1, §13). The fallback is a manual config flow: the add-on's **Integration** page shows the discovery status (uuid, last error, or skipped), and the host, port and API token behind a **Reveal** button.
 
 ### 9.5 Development
 - Run locally with `docker compose` (or plain `dotnet run`). In Development, `Ingress:DevFakeIngress` fakes the Ingress headers.
