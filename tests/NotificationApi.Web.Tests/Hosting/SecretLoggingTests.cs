@@ -21,7 +21,9 @@ public sealed class SecretLoggingTests
             ok.StatusCode.ShouldBe(HttpStatusCode.OK);
         }
 
-        using (var wrong = await client.SendAsync(TestRequests.Api(HttpMethod.Get, "/api/v1/ping", token[..^1] + "A"), TestContext.Current.CancellationToken))
+        // Change the last character to another valid one ('A' is itself a possible last character, so don't always use it).
+        var wrongToken = token[..^1] + (token[^1] == 'A' ? 'E' : 'A');
+        using (var wrong = await client.SendAsync(TestRequests.Api(HttpMethod.Get, "/api/v1/ping", wrongToken), TestContext.Current.CancellationToken))
         {
             wrong.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         }
