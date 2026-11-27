@@ -26,8 +26,11 @@ public sealed class MigrationTests : IDisposable
         await using var db = database.CreateContext();
 
         (await db.Database.GetPendingMigrationsAsync(TestContext.Current.CancellationToken)).ShouldBeEmpty();
-        (await db.Database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken)).ShouldNotBeEmpty();
+        (await db.Database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken))
+            .Select(m => m[15..]) // drop the timestamp prefix
+            .ShouldBe(["InitialCreate", "AddWebhookAndInstance"]);
         (await db.ApiClients.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
+        (await db.Instances.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
     }
 
     [Fact]

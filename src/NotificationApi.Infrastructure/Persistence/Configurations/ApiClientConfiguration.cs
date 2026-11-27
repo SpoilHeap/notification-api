@@ -24,8 +24,10 @@ internal sealed class ApiClientConfiguration : IEntityTypeConfiguration<ApiClien
             .IsRequired();
 
         builder.Property(c => c.ProtectedToken).IsRequired();
-        builder.Property(c => c.WebhookUrl).HasMaxLength(2048);
+        builder.Property(c => c.WebhookUrl).HasMaxLength(ApiClient.MaxWebhookUrlLength);
         builder.Property(c => c.ProtectedWebhookSecret);
+        builder.Property(c => c.WebhookRegisteredAt);
+        builder.Ignore(c => c.HasWebhook);
         builder.Property(c => c.CreatedAt).IsRequired();
         builder.Property(c => c.LastUsedAt);
     }

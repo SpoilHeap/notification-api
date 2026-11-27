@@ -45,6 +45,9 @@ namespace NotificationApi.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("BLOB");
 
+                    b.Property<DateTimeOffset?>("WebhookRegisteredAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("WebhookUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
@@ -55,6 +58,25 @@ namespace NotificationApi.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("ApiClients", (string)null);
+                });
+
+            modelBuilder.Entity("NotificationApi.Domain.Instances.Instance", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("RecipientsRevisionNumber")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("RecipientsRevision");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Instance", (string)null);
                 });
 #pragma warning restore 612, 618
         }

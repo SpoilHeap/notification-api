@@ -4,6 +4,8 @@ namespace NotificationApi.Application.ApiAccess;
 
 public interface IApiClientRepository
 {
+    Task<ApiClient?> FindByIdAsync(ApiClientId id, CancellationToken cancellationToken);
+
     Task<ApiClient?> FindByNameAsync(string name, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ApiClient>> ListAsync(CancellationToken cancellationToken);
