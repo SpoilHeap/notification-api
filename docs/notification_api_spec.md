@@ -1,6 +1,6 @@
-# Notification API: Spec (v1.2)
+# Notification API: Spec (v1.3)
 
-Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. v1.2 (2026-11-27) pins the exact wire details of §4.2–§4.4 (secret encoding, signature bytes, envelope format, ETag matching, the `webhook.test` event and a signature test vector), so both repos implement the same bytes. Source brief: `brief.md`. Build standards: `engineering_standards.md`.
+Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. v1.2 (2026-11-27) pins the exact wire details of §4.2–§4.4 (secret encoding, signature bytes, envelope format, ETag matching, the `webhook.test` event and a signature test vector), so both repos implement the same bytes. v1.3 (2026-11-27) fixes the contacts and groups decisions found while building them: what changes the recipients revision (§4.2), how `recipients.changed` is sent (§4.4), endpoint verification (§6), the data model and audit log (§7), and deletion and routing rules (§12.5). Source brief: `brief.md`. Build standards: `engineering_standards.md`.
 
 ## 1. Guiding principle
 
@@ -96,10 +96,11 @@ Errors: `400` unknown handle or invalid payload, `401` bad token, `422` zero del
   ```json
   { "revision": "17", "recipients": [ { "handle": "group:family", "name": "Family", "type": "group" } ] }
   ```
-  - `revision` is an opaque string that changes whenever any contact or group is created, renamed or deleted. A new database starts at `"1"`. Treat it as opaque: compare for equality only.
+  - `recipients` is sorted by type (contacts first), then by handle. Each entry has exactly `handle`, `name` (the display name) and `type` (`contact` or `group`).
+  - `revision` is an opaque string that changes whenever any contact or group is **created, renamed (display name changed) or deleted**. Nothing else changes it: endpoints, routing and group membership aren't part of this response, so changing them leaves the revision (and the ETag) as it was. A new database starts at `"1"`. Treat it as opaque: compare for equality only.
   - Every 200 and 304 response carries it as a strong `ETag`: the revision in double quotes, e.g. `ETag: "17"`.
   - With `If-None-Match` set to the current ETag (`"17"`), the add-on answers **304 Not Modified** with no body. Any other value, or no header, gets 200. Matching follows RFC 9110 (a list of tags, `*`, and `W/"17"` all match). Polling is then cheap.
-  - Until contacts and groups exist, `recipients` is always `[]`.
+  - A new database has no contacts or groups, so `recipients` is `[]`.
 - `GET /notifications/{id}`, `GET /channels`
 
 `GET /health` is at the root (`http://<addon-hostname>:8080/health`), not under `/api/v1`. It's anonymous, for the Docker HEALTHCHECK.
@@ -134,7 +135,7 @@ Types:
 | Type | `data` | Producer |
 |---|---|---|
 | `webhook.test` | `{}` | **Send test event** on the add-on's Integration page. Lets an admin check the webhook before contacts exist. The integration verifies it like any event, and may log or ignore it. |
-| `recipients.changed` | `{"revision": "18"}`: the revision the next `GET /recipients` returns (AC45) | Contact or group created, renamed or deleted |
+| `recipients.changed` | `{"revision": "18"}`: the revision the next `GET /recipients` returns (AC45) | Contact or group created, renamed or deleted (one event per change, sent after it's committed; see below) |
 | `delivery.sent` | AC30 fields | Delivery reached `sent` |
 | `delivery.failed` | AC31 fields, plus `error` | Delivery reached `failed` |
 
@@ -160,6 +161,8 @@ The add-on serialises the body once and sends exactly the bytes it signed. The r
 
 In Python: `hmac.new(base64.b64decode(secret), b"1795796120." + body, hashlib.sha256).hexdigest()`.
 
+**Sending:** events are queued in memory once the change that caused them is committed, and a background sender POSTs them one at a time, in the order they were queued ([ADR 0013](adr/0013-ha-events-sent-from-an-in-process-queue.md)). The request that made the change never waits for HA. The queue holds at most 256 events: when it's full the oldest waiting event is dropped and logged at Warning, and waiting events are lost when the add-on stops. **Send test event** (`webhook.test`) is the exception: it's sent inline, because the Integration page shows HA's answer.
+
 **Delivery:** best-effort, one attempt with a 5 s timeout, no retry (AC34). A 2xx answer counts as delivered. Any other status (redirects aren't followed), a timeout or a connection error is a failure, logged at Warning with the event type, id and HTTP status, never the secret or the body. With no registration the event is dropped and logged at Debug. The integration therefore doesn't rely on `recipients.changed` alone: it also polls `GET /recipients` with `If-None-Match` (§11).
 
 ## 5. Delivery algorithm (v1)
@@ -174,17 +177,21 @@ Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: m
 
 ## 6. Channels (v1)
 
-**Telegram:** Bot API, with updates by long polling. Contacts link through a deep link / QR code `t.me/<bot>?start=<one-time-token>`.
-**SMS.to:** REST API key and sender ID, E.164 numbers, "sent" is final.
+**Telegram:** Bot API, with updates by long polling. Contacts link through a deep link / QR code `t.me/<bot>?start=<one-time-token>`. A Telegram endpoint can **only** be created by that linking flow (AC60–AC63): an admin can't type a chat id. Until a contact is linked, the UI shows Telegram as *Not linked — coming soon* (until the linking feature ships) and routing can't select it.
+**SMS.to:** REST API key and sender ID, E.164 numbers, "sent" is final. An SMS endpoint is **verified on entry**: an admin types the number, so `verified_at` is set when it's saved. Numbers are normalised by removing spaces, dashes and parentheses, and must then be `+` followed by 8–15 digits, the first not `0` (AC52).
 
 ## 7. Data model (sketch)
 
-- **Contact**, **Endpoint**, **Group**, **GroupMember**: as before
+- **Contact**: an immutable `handle` (`contact:<name>`, name `[a-z0-9_]{1,64}`), a display `name` (required, trimmed, one line, ≤ 100 characters), its endpoints, and `routing`: for each priority, an ordered list of distinct channels. Routing may only name channels the contact has an endpoint for; removing an endpoint also removes its channel from every priority.
+- **Endpoint**: `channel`, `address` (E.164 for SMS, chat id for Telegram), `verified_at`. At most one per channel per contact. Only verified endpoints receive deliveries (§5 step 2).
+- **Group**: an immutable `handle` (`group:<name>`), a display `name`, and members.
+- **GroupMember**: exactly one contact or one group. A member appears at most once in the same group (a contact can still be in many groups). Adding a member that would create a cycle (the group itself, or a group that already contains it at any depth) is rejected (AC55).
+- Handles are unique per type, stored as text in their own tables: `contact:x` and `group:x` may coexist (AC57). Deleting a contact or group removes its memberships in other groups (AC56); deleting a group never deletes its members.
 - **ApiClient**: hashed token + encrypted token (ADR 0012), webhook URL + encrypted webhook secret + registered_at, last_used (one row in v1: HA)
 - **Instance**: a single row: `instance_id` (UUID v4, created on first start with the database) and the recipients `revision` counter (starts at 1)
 - **Notification**, **Delivery**: as before
 - **Settings**: retention_days (30), retry count/interval, provider credentials (encrypted)
-- **AuditLog**: ha_user_id + display name (from the Ingress headers), action, entity, timestamp
+- **AuditLog**: one entry per create, update or delete made in the web UI (contacts, groups, endpoints, routing, membership), plus **Reveal API token** and **Send test event** (AC82). Fields: timestamp, `ha_user_id` and display name (from the Ingress headers), action (`create`, `update`, `delete`, `reveal`, `send`), entity type, entity key (the handle, or another stable key) and a short summary. Phone numbers are always masked (`+3538****567`, engineering_standards.md §5), never stored in full. The UI shows it read-only, newest first, 50 per page. The retention purge (AC73) will delete old entries.
 
 ## 8. Authentication and authorisation
 
@@ -358,10 +365,10 @@ Default fixtures used below: contact **Alice** (Telegram verified, SMS verified;
 | AC50 | An admin can create, edit and delete a contact with a display name and a unique **handle** (`[a-z0-9_]+`). | E |
 | AC51 | A contact's **handle can't be changed** after creation, because HA automations depend on it. The display name can be changed. | A + E |
 | AC52 | SMS numbers are validated and stored in E.164. Invalid numbers are rejected with a field error. | A |
-| AC53 | Per-priority routing can be set for each contact, from the channels that contact has endpoints for. | E |
+| AC53 | Per-priority routing can be set for each contact, from the channels that contact has endpoints for. Removing an endpoint removes its channel from the routing. | E |
 | AC54 | An admin can create a group and add contacts **and other groups** as members. | E |
 | AC55 | Adding a member that would create a cycle (self, direct or indirect) is rejected with a clear message. | A |
-| AC56 | Deleting a contact or group that is a member of other groups asks for confirmation (listing those groups) and then removes the memberships. | E |
+| AC56 | Deleting a contact or group that is a member of other groups asks for confirmation (listing those groups) and then removes the memberships. Deleting a group doesn't delete its members. | E |
 | AC57 | Group and contact handles share one namespace per type (`contact:x` and `group:x` may coexist, two `group:x` may not). | A |
 
 ### 12.6 Telegram linking
@@ -416,6 +423,10 @@ No open design questions. These decisions were confirmed while drafting the crit
 - AC34: webhook events to HA are best-effort, with no retry.
 - AC20: 3 retries = 4 attempts in total.
 - AC71: the "Send test" action is in scope for v1.
+- §4.2, AC43 (v1.3): only creating, renaming or deleting a contact or group changes the recipients revision. Endpoint, routing and membership changes don't, because `/recipients` doesn't expose them.
+- §4.4, AC32 (v1.3): `recipients.changed` is sent after the commit by a background sender, never inline in the UI request ([ADR 0013](adr/0013-ha-events-sent-from-an-in-process-queue.md)).
+- §6 (v1.3): SMS endpoints are verified on entry. Telegram endpoints exist only through the linking flow.
+- AC56 (v1.3): deleting asks for confirmation listing the containing groups, then removes those memberships. Deleting a group keeps its members.
 
 Spike results (HA OS, amd64 ThinkCentre, 2026-11-25; code in `spikes/`):
 

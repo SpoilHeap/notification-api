@@ -3,6 +3,20 @@
 All notable changes to this add-on are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Contacts** page: create a contact with a permanent handle (`contact:alice`) and a name, then set its SMS number and choose which channels each priority uses. SMS numbers are checked and stored in international (E.164) form, and only ever shown masked (`+3538****567`). Telegram shows "Not linked — coming soon" until Telegram linking arrives.
+- **Groups** page: create groups of contacts and other groups. Adding a group that would create a loop (a group inside itself, directly or through other groups) is refused with a message that shows the loop.
+- Deleting a contact or group first shows which groups it belongs to, then removes it from them. Deleting a group never deletes its members.
+- **Audit log** page: every change in the web UI, newest first, with the Home Assistant user who made it. Phone numbers are masked. Revealing the API token and sending a test event are recorded too.
+- `GET /api/v1/recipients` now lists every contact and group (handle, name and type only), contacts first. Its revision and ETag change when a contact or group is created, renamed or deleted.
+- A `recipients.changed` event is sent to Home Assistant after each of those changes.
+
+### Changed
+- Webhook events are now sent in the background, so saving in the web UI never waits for Home Assistant.
+- The database gets a new migration on start (contacts, groups and the audit log).
+
 ## [0.3.0] - 2026-11-27
 
 ### Added
