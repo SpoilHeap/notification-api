@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,9 @@ public sealed class NotificationApiFactory : WebApplicationFactory<Program>
 
     /// <summary>Extra configuration, applied after the defaults.</summary>
     public Dictionary<string, string> Settings { get; } = [];
+
+    /// <summary>Service overrides (fake channels, fake time…), applied after the app's own registrations.</summary>
+    public List<Action<IServiceCollection>> TestServices { get; } = [];
 
     /// <summary>A request as HA Ingress sends it: from the proxy address, with the identity headers.</summary>
     public static HttpRequestMessage IngressRequest(HttpMethod method, string path, string remoteIp = IngressProxyIp, bool withUser = true)
@@ -62,6 +66,7 @@ public sealed class NotificationApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
         builder.ConfigureServices(services => services.AddSingleton<IStartupFilter, FakeRemoteIpStartupFilter>());
+        builder.ConfigureTestServices(services => TestServices.ForEach(configure => configure(services)));
     }
 
     public override async ValueTask DisposeAsync()
