@@ -1,0 +1,70 @@
+@page "/contacts/{Name}/delete"
+@using NotificationApi.Application.Contacts
+@inject NavigationManager Navigation
+@inject GetContact GetContact
+@inject DeleteContact DeleteContact
+
+<PageTitle>Delete contact · Notification API</PageTitle>
+
+@if (_contact is not null)
+{
+  <p><a href="contacts/@_contact.HandleName">← @_contact.Name</a></p>
+  <h1>Delete @_contact.Name?</h1>
+  <p>
+    <code>@_contact.Handle</code> will stop working in Home Assistant: automations that send to it will fail.
+    Its endpoints and routing are deleted too.
+  </p>
+  @if (_contact.MemberOf.Count > 0)
+  {
+    <p>It's a member of these groups, and will be removed from them:</p>
+    <ul data-testid="member-of">
+      @foreach (var group in _contact.MemberOf)
+      {
+        <li><code>@group.Handle</code> (@group.Name)</li>
+      }
+    </ul>
+  }
+  else
+  {
+    <p data-testid="member-of-none">It isn't a member of any group.</p>
+  }
+  <form method="post" @formname="delete-contact" @onsubmit="DeleteAsync">
+    <AntiforgeryToken />
+    <button type="submit" class="danger">Delete contact</button>
+    <a href="contacts/@_contact.HandleName">Cancel</a>
+  </form>
+}
+
+@code {
+  private ContactDetails? _contact;
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  [Parameter] public string Name { get; set; } = string.Empty;
+
+  protected override async Task OnInitializedAsync()
+  {
+    var result = await GetContact.HandleAsync(Name, HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      _contact = result.Value;
+    }
+    else
+    {
+      Navigation.NotFound();
+    }
+  }
+
+  private async Task DeleteAsync()
+  {
+    var result = await DeleteContact.HandleAsync(HttpContext.User.ToAuditActor(), Name, HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      PostRedirectGet.SeeOther(HttpContext, $"contacts?deleted={Name}");
+      return;
+    }
+
+    _contact = null;
+    Navigation.NotFound();
+  }
+}

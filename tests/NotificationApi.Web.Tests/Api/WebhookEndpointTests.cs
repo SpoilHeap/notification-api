@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Webhooks;
+using NotificationApi.Domain.Audit;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
@@ -199,5 +200,5 @@ public sealed class WebhookEndpointTests : IAsyncLifetime
         _client.SendAsync(TestRequests.Api(method, "/api/v1/webhook", _token), TestContext.Current.CancellationToken);
 
     private Task<HaEventOutcome> SendTestEventAsync() =>
-        _factory.Services.InScopeAsync<SendTestEvent, HaEventOutcome>(u => u.HandleAsync(NotificationApiFactory.HaUserId, TestContext.Current.CancellationToken));
+        _factory.Services.InScopeAsync<SendTestEvent, HaEventOutcome>(u => u.HandleAsync(new AuditActor(NotificationApiFactory.HaUserId, "Alice"), TestContext.Current.CancellationToken));
 }

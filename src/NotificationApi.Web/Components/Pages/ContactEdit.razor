@@ -1,0 +1,247 @@
+@page "/contacts/{Name}"
+@using NotificationApi.Application.Common
+@using NotificationApi.Application.Contacts
+@using NotificationApi.Application.Recipients
+@using NotificationApi.Domain.Notifications
+@inject NavigationManager Navigation
+@inject GetContact GetContact
+@inject RenameContact RenameContact
+@inject SetContactSmsNumber SetContactSmsNumber
+@inject RemoveContactEndpoint RemoveContactEndpoint
+@inject SetContactRouting SetContactRouting
+
+<PageTitle>@(_contact?.Name ?? "Contact") · Notification API</PageTitle>
+
+@if (_contact is not null)
+{
+  <p><a href="contacts">← Contacts</a></p>
+  <h1>@_contact.Name</h1>
+
+  @if (Saved is not null)
+  {
+    <p class="ok" data-testid="flash">@SavedText(Saved)</p>
+  }
+
+  <section>
+    <h2>Details</h2>
+    <form method="post" @formname="rename-contact" @onsubmit="RenameAsync" class="stack">
+      <AntiforgeryToken />
+      <label>
+        Handle
+        <input value="@_contact.Handle" readonly data-testid="handle" aria-describedby="handle-hint" />
+      </label>
+      <span class="hint" id="handle-hint">Handles can't be changed: Home Assistant automations depend on them.</span>
+      <label>
+        Name
+        <input name="Rename.Name" value="@Rename?.Name" maxlength="100" />
+      </label>
+      <FieldError Errors="_errors" Field="@RecipientFields.Name" />
+      <div><button type="submit">Save name</button></div>
+    </form>
+  </section>
+
+  <section>
+    <h2>Endpoints</h2>
+    <h3>SMS</h3>
+    @if (Endpoint(ChannelType.Sms) is { } sms)
+    {
+      <p>Current number: <code data-testid="sms-number">@sms.MaskedAddress</code> <span class="hint">(verified when entered)</span></p>
+    }
+    <form method="post" @formname="set-sms" @onsubmit="SetSmsAsync" class="stack">
+      <AntiforgeryToken />
+      <label>
+        @(Endpoint(ChannelType.Sms) is null ? "Add an SMS number" : "Change the SMS number")
+        <input name="Sms.Number" value="@Sms?.Number" type="tel" placeholder="+44 7700 900123" autocomplete="off" />
+      </label>
+      <span class="hint">International format: '+', the country code, then the number. Spaces, dashes and brackets are fine.</span>
+      <FieldError Errors="_errors" Field="@RecipientFields.PhoneNumber" />
+      <div><button type="submit">Save SMS number</button></div>
+    </form>
+    @if (Endpoint(ChannelType.Sms) is not null)
+    {
+      <form method="post" @formname="remove-sms" @onsubmit="RemoveSmsAsync">
+        <AntiforgeryToken />
+        <button type="submit" class="secondary">Remove SMS number</button>
+        <span class="hint">It's also removed from this contact's routing.</span>
+      </form>
+    }
+
+    <h3>Telegram</h3>
+    @if (Endpoint(ChannelType.Telegram) is not null)
+    {
+      <p data-testid="telegram-state">Linked</p>
+    }
+    else
+    {
+      <p data-testid="telegram-state">Not linked — coming soon. Telegram linking will add a link and QR code here.</p>
+    }
+  </section>
+
+  <section>
+    <h2>Routing</h2>
+    <p class="hint">Which channels each priority uses. Only channels this contact has an endpoint for can be chosen.</p>
+    <form method="post" @formname="set-routing" @onsubmit="SetRoutingAsync">
+      <AntiforgeryToken />
+      <table class="list routing">
+        <thead>
+          <tr>
+            <th>Priority</th>
+            @foreach (var channel in Channels)
+            {
+              <th>@ChannelNames.Of(channel)</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @foreach (var priority in Enum.GetValues<Priority>())
+          {
+            <tr>
+              <td>@ChannelNames.Of(priority)</td>
+              @foreach (var channel in Channels)
+              {
+                var available = Endpoint(channel) is not null;
+                <td>
+                  <input type="checkbox" name="@RouteField(priority)" value="@ChannelNames.Of(channel).ToLowerInvariant()"
+                         aria-label="@ChannelNames.Of(priority) via @ChannelNames.Of(channel)"
+                         checked="@_contact.Routing[priority].Contains(channel)" disabled="@(!available)" />
+                  @if (!available)
+                  {
+                    <span class="hint">@(channel == ChannelType.Telegram ? "not linked" : "no number")</span>
+                  }
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+      <FieldError Errors="_errors" Field="@RecipientFields.Routing" />
+      <div><button type="submit">Save routing</button></div>
+    </form>
+  </section>
+
+  <section>
+    <h2>Delete</h2>
+    <p><a href="contacts/@_contact.HandleName/delete" class="danger" data-testid="delete-link">Delete this contact…</a></p>
+  </section>
+}
+
+@code {
+  private static readonly ChannelType[] Channels = [ChannelType.Telegram, ChannelType.Sms];
+
+  private ContactDetails? _contact;
+  private IReadOnlyDictionary<string, string[]>? _errors;
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  [Parameter] public string Name { get; set; } = string.Empty;
+
+  [SupplyParameterFromQuery] public string? Saved { get; set; }
+
+  [SupplyParameterFromForm(FormName = "rename-contact")] private RenameForm? Rename { get; set; }
+
+  [SupplyParameterFromForm(FormName = "set-sms")] private SmsForm? Sms { get; set; }
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadAsync();
+    Rename ??= new() { Name = _contact?.Name };
+    Sms ??= new();
+  }
+
+  private async Task LoadAsync()
+  {
+    var result = await GetContact.HandleAsync(Name, HttpContext.RequestAborted);
+    if (result.IsFailure)
+    {
+      Navigation.NotFound();
+      return;
+    }
+
+    _contact = result.Value;
+  }
+
+  private EndpointView? Endpoint(ChannelType channel) => _contact?.Endpoints.FirstOrDefault(e => e.Channel == channel);
+
+  private static string RouteField(Priority priority) => $"route-{ChannelNames.Of(priority)}";
+
+  private async Task RenameAsync() =>
+    Handle(await RenameContact.HandleAsync(HttpContext.User.ToAuditActor(), Name, Rename?.Name, HttpContext.RequestAborted), "name");
+
+  private async Task SetSmsAsync() =>
+    Handle(await SetContactSmsNumber.HandleAsync(HttpContext.User.ToAuditActor(), Name, Sms?.Number, HttpContext.RequestAborted), "sms");
+
+  private async Task RemoveSmsAsync() =>
+    Handle(await RemoveContactEndpoint.HandleAsync(HttpContext.User.ToAuditActor(), Name, ChannelType.Sms, HttpContext.RequestAborted), "sms-removed");
+
+  private async Task SetRoutingAsync()
+  {
+    // Checkboxes post one value per ticked channel under the same name; Blazor's model binding doesn't map repeated
+    // keys, so they are read from the form Blazor has already parsed.
+    var form = HttpContext.Request.Form;
+    var routing = new Dictionary<Priority, IReadOnlyList<ChannelType>>();
+    var unknown = false;
+    foreach (var priority in Enum.GetValues<Priority>())
+    {
+      var channels = new List<ChannelType>();
+      foreach (var value in form[RouteField(priority)])
+      {
+        if (Enum.TryParse<ChannelType>(value, ignoreCase: true, out var channel) && Enum.IsDefined(channel))
+        {
+          channels.Add(channel);
+        }
+        else
+        {
+          unknown = true;
+        }
+      }
+
+      routing[priority] = [.. Channels.Where(channels.Contains)]; // canonical order: Telegram, then SMS
+    }
+
+    if (unknown)
+    {
+      _errors = new Dictionary<string, string[]> { [RecipientFields.Routing] = ["Unknown channel."] };
+      return;
+    }
+
+    Handle(await SetContactRouting.HandleAsync(HttpContext.User.ToAuditActor(), Name, routing, HttpContext.RequestAborted), "routing");
+  }
+
+  private void Handle<T>(Result<T> result, string saved)
+  {
+    if (result.IsSuccess)
+    {
+      PostRedirectGet.SeeOther(HttpContext, $"contacts/{Name}?saved={saved}");
+      return;
+    }
+
+    if (result.Error.Code == Error.ValidationCode)
+    {
+      _errors = result.Error.FieldErrors;
+      return;
+    }
+
+    _contact = null;
+    Navigation.NotFound();
+  }
+
+  private static string SavedText(string saved) => saved switch
+  {
+    "created" => "Contact created. Add an SMS number and choose its routing.",
+    "name" => "Name saved.",
+    "sms" => "SMS number saved.",
+    "sms-removed" => "SMS number removed.",
+    "routing" => "Routing saved.",
+    _ => "Saved.",
+  };
+
+  public sealed class RenameForm
+  {
+    public string? Name { get; set; }
+  }
+
+  public sealed class SmsForm
+  {
+    public string? Number { get; set; }
+  }
+}

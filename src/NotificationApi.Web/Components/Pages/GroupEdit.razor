@@ -1,0 +1,189 @@
+@page "/groups/{Name}"
+@using NotificationApi.Application.Common
+@using NotificationApi.Application.Groups
+@using NotificationApi.Application.Recipients
+@inject NavigationManager Navigation
+@inject GetGroup GetGroup
+@inject RenameGroup RenameGroup
+@inject AddGroupMember AddGroupMember
+@inject RemoveGroupMember RemoveGroupMember
+
+<PageTitle>@(_group?.Name ?? "Group") · Notification API</PageTitle>
+
+@if (_group is not null)
+{
+  <p><a href="groups">← Groups</a></p>
+  <h1>@_group.Name</h1>
+
+  @if (Saved is not null)
+  {
+    <p class="ok" data-testid="flash">@SavedText(Saved)</p>
+  }
+
+  <section>
+    <h2>Details</h2>
+    <form method="post" @formname="rename-group" @onsubmit="RenameAsync" class="stack">
+      <AntiforgeryToken />
+      <label>
+        Handle
+        <input value="@_group.Handle" readonly data-testid="handle" aria-describedby="handle-hint" />
+      </label>
+      <span class="hint" id="handle-hint">Handles can't be changed: Home Assistant automations depend on them.</span>
+      <label>
+        Name
+        <input name="Rename.Name" value="@Rename?.Name" maxlength="100" />
+      </label>
+      <FieldError Errors="_errors" Field="@RecipientFields.Name" />
+      <div><button type="submit">Save name</button></div>
+    </form>
+  </section>
+
+  <section>
+    <h2>Members</h2>
+    <p class="hint">A notification to this group goes to every member, including the members of nested groups. Someone in two of the groups gets it twice.</p>
+    @if (_group.Members.Count == 0)
+    {
+      <p data-testid="no-members">No members yet.</p>
+    }
+    else
+    {
+      <form method="post" @formname="remove-member" @onsubmit="RemoveMemberAsync">
+        <AntiforgeryToken />
+        <table class="list" data-testid="members">
+          <thead><tr><th>Member</th><th>Name</th><th></th></tr></thead>
+          <tbody>
+            @foreach (var member in _group.Members)
+            {
+              <tr>
+                <td><a href="@(member.Type)s/@member.Handle[(member.Type.Length + 1)..]"><code>@member.Handle</code></a></td>
+                <td>@member.Name</td>
+                <td><button type="submit" name="member" value="@member.Handle" class="secondary">Remove</button></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </form>
+    }
+
+    <form method="post" @formname="add-member" @onsubmit="AddMemberAsync" class="stack">
+      <AntiforgeryToken />
+      <label>
+        Add a member
+        <select name="AddMember.Member" aria-describedby="error-@RecipientFields.Member">
+          <option value="">Choose a contact or group…</option>
+          @if (Contacts.Any())
+          {
+            <optgroup label="Contacts">
+              @foreach (var candidate in Contacts)
+              {
+                <option value="@candidate.Handle" selected="@(candidate.Handle == AddMember?.Member)">@candidate.Name (@candidate.Handle)</option>
+              }
+            </optgroup>
+          }
+          @if (OtherGroups.Any())
+          {
+            <optgroup label="Groups">
+              @foreach (var candidate in OtherGroups)
+              {
+                <option value="@candidate.Handle" selected="@(candidate.Handle == AddMember?.Member)">@candidate.Name (@candidate.Handle)</option>
+              }
+            </optgroup>
+          }
+        </select>
+      </label>
+      <FieldError Errors="_errors" Field="@RecipientFields.Member" />
+      <div><button type="submit">Add member</button></div>
+    </form>
+  </section>
+
+  <section>
+    <h2>Delete</h2>
+    <p><a href="groups/@_group.HandleName/delete" class="danger" data-testid="delete-link">Delete this group…</a></p>
+  </section>
+}
+
+@code {
+  private GroupDetails? _group;
+  private IReadOnlyDictionary<string, string[]>? _errors;
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  [Parameter] public string Name { get; set; } = string.Empty;
+
+  [SupplyParameterFromQuery] public string? Saved { get; set; }
+
+  [SupplyParameterFromForm(FormName = "rename-group")] private RenameForm? Rename { get; set; }
+
+  [SupplyParameterFromForm(FormName = "add-member")] private MemberForm? AddMember { get; set; }
+
+  private IEnumerable<RecipientRef> Contacts => _group?.Candidates.Where(c => c.Handle.StartsWith("contact:", StringComparison.Ordinal)) ?? [];
+
+  private IEnumerable<RecipientRef> OtherGroups => _group?.Candidates.Where(c => c.Handle.StartsWith("group:", StringComparison.Ordinal)) ?? [];
+
+  protected override async Task OnInitializedAsync()
+  {
+    var result = await GetGroup.HandleAsync(Name, HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      _group = result.Value;
+    }
+    else
+    {
+      ShowNotFound();
+    }
+
+    Rename ??= new() { Name = _group?.Name };
+    AddMember ??= new();
+  }
+
+  private async Task RenameAsync() =>
+    Handle(await RenameGroup.HandleAsync(HttpContext.User.ToAuditActor(), Name, Rename?.Name, HttpContext.RequestAborted), "name");
+
+  private async Task AddMemberAsync() =>
+    Handle(await AddGroupMember.HandleAsync(HttpContext.User.ToAuditActor(), Name, AddMember?.Member, HttpContext.RequestAborted), "member-added");
+
+  // One form, one submit button per member: the clicked button posts its own name/value pair.
+  private async Task RemoveMemberAsync() =>
+    Handle(await RemoveGroupMember.HandleAsync(HttpContext.User.ToAuditActor(), Name, HttpContext.Request.Form["member"].ToString(), HttpContext.RequestAborted), "member-removed");
+
+  private void Handle<T>(Result<T> result, string saved)
+  {
+    if (result.IsSuccess)
+    {
+      PostRedirectGet.SeeOther(HttpContext, $"groups/{Name}?saved={saved}");
+    }
+    else if (result.Error.Code == Error.ValidationCode)
+    {
+      _errors = result.Error.FieldErrors;
+    }
+    else
+    {
+      ShowNotFound();
+    }
+  }
+
+  private void ShowNotFound()
+  {
+    _group = null;
+    Navigation.NotFound();
+  }
+
+  private static string SavedText(string saved) => saved switch
+  {
+    "created" => "Group created. Add its members below.",
+    "name" => "Name saved.",
+    "member-added" => "Member added.",
+    "member-removed" => "Member removed.",
+    _ => "Saved.",
+  };
+
+  public sealed class RenameForm
+  {
+    public string? Name { get; set; }
+  }
+
+  public sealed class MemberForm
+  {
+    public string? Member { get; set; }
+  }
+}

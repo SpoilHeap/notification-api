@@ -17,6 +17,46 @@ which channels to use and holds every phone number, chat ID and provider key, so
 Everything is configured in the add-on's web UI: contacts, groups, channel credentials and retention.
 The add-on has no options in this tab.
 
+## Contacts and groups
+
+Home Assistant never sees phone numbers. Automations name a **handle** instead: `contact:alice` for one
+person, `group:family` for a group. You set these up in the add-on's web UI.
+
+### Add a contact
+
+1. Open **Contacts**, enter a **handle** (lower-case letters, digits and `_`, e.g. `alice`) and a
+   **name**, then click **Create contact**. The handle can't be changed later, because automations use it.
+   A contact and a group may have the same handle (`contact:family` and `group:family`).
+2. On the contact's page, enter the **SMS number** in international form: `+`, the country code and
+   the number, e.g. `+353 86 123 4567` (spaces, dashes and brackets are fine). It's stored without them
+   and shown masked from then on.
+3. Under **Routing**, tick the channels to use for each priority (`low`, `normal`, `high`, `critical`).
+   Only channels the contact has set up can be ticked, and a priority with nothing ticked sends nothing
+   to that contact. Removing the SMS number also removes SMS from the routing.
+
+Telegram shows **Not linked — coming soon**: linking a Telegram chat comes in a later version.
+
+### Add a group
+
+1. Open **Groups**, enter a handle (e.g. `family`) and a name, and click **Create group**.
+2. On the group's page, pick contacts or other groups under **Add a member**. Groups can be nested, and
+   someone who is in two of the groups receives the message twice. A group can't contain itself,
+   directly or through other groups: the page says which groups would form the loop.
+
+### Rename or delete
+
+Changing a name keeps the handle, so automations keep working. **Delete** shows the groups the contact
+or group is in before you confirm, and removes it from them. Deleting a group doesn't delete its
+members. Automations that still send to a deleted handle will fail.
+
+Creating, renaming or deleting a contact or group updates the integration's entities within about
+30 seconds, without restarting Home Assistant.
+
+### Audit log
+
+**Audit log** lists every change made in the web UI, newest first, with the Home Assistant user who
+made it. Phone numbers are masked there too.
+
 ## Home Assistant integration
 
 The companion integration (`notification-api-ha`, installed through HACS) is discovered automatically
