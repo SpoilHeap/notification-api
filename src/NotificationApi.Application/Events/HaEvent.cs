@@ -1,3 +1,6 @@
+using NotificationApi.Application.Notifications;
+using NotificationApi.Domain.Notifications;
+
 namespace NotificationApi.Application.Events;
 
 /// <summary>Event types POSTed to the HA webhook (spec §4.4).</summary>
@@ -21,6 +24,18 @@ public sealed record WebhookTestData : HaEventData;
 
 /// <summary><c>recipients.changed</c>: <c>data: {"revision": "18"}</c>, the revision the next <c>GET /recipients</c> returns (AC45).</summary>
 public sealed record RecipientsChangedData(string Revision) : HaEventData;
+
+/// <summary>
+/// <c>delivery.sent</c> (AC30), in this field order: <c>notification_id</c>, <c>delivery_id</c>, <c>contact</c> (the
+/// handle name, e.g. <c>alice</c>), <c>via</c> (the handle from <c>to</c>), <c>channel</c>, then <c>tag</c> and
+/// <c>source</c> (null when the request had none).
+/// </summary>
+public sealed record DeliverySentData(
+    string NotificationId, string DeliveryId, string Contact, string Via, string Channel, string? Tag, string? Source) : HaEventData;
+
+/// <summary><c>delivery.failed</c> (AC31): the <see cref="DeliverySentData"/> fields, then <c>error</c> (the last attempt's error).</summary>
+public sealed record DeliveryFailedData(
+    string NotificationId, string DeliveryId, string Contact, string Via, string Channel, string? Tag, string? Source, string Error) : HaEventData;
 
 /// <summary>
 /// The envelope <c>{"id", "type", "occurred_at", "data"}</c> (spec §4.4). The id is <c>evt_</c> plus 32 lower-case hex
@@ -53,6 +68,29 @@ public sealed record HaEvent
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(revision);
         return Create(HaEventTypes.RecipientsChanged, new RecipientsChangedData(revision), time);
+    }
+
+    /// <summary><c>delivery.sent</c> or <c>delivery.failed</c>, for a delivery that has just reached a final state.</summary>
+    public static HaEvent DeliveryCompleted(Notification notification, Delivery delivery, TimeProvider time)
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+        ArgumentNullException.ThrowIfNull(delivery);
+        var (id, deliveryId, contact, via, channel) = (
+            notification.Id.ToString(),
+            delivery.Id.ToString(),
+            delivery.Contact.Name,
+            delivery.Via.ToString(),
+            WireNames.Of(delivery.Channel));
+        return delivery.Status switch
+        {
+            DeliveryStatus.Sent => Create(
+                HaEventTypes.DeliverySent, new DeliverySentData(id, deliveryId, contact, via, channel, notification.Tag, notification.Source), time),
+            DeliveryStatus.Failed => Create(
+                HaEventTypes.DeliveryFailed,
+                new DeliveryFailedData(id, deliveryId, contact, via, channel, notification.Tag, notification.Source, delivery.LastError ?? "Unknown error."),
+                time),
+            _ => throw new InvalidOperationException($"Delivery {delivery.Id} is {delivery.Status}, not final."),
+        };
     }
 
     /// <summary>For event types added later (e.g. <c>delivery.*</c>).</summary>

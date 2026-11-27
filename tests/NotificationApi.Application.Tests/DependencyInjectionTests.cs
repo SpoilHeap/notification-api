@@ -10,7 +10,9 @@ using NotificationApi.Application.Discovery;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Groups;
 using NotificationApi.Application.Instances;
+using NotificationApi.Application.Notifications;
 using NotificationApi.Application.Recipients;
+using NotificationApi.Application.Settings;
 using NotificationApi.Application.Tests.Fakes;
 using NotificationApi.Application.Webhooks;
 
@@ -37,6 +39,8 @@ public sealed class DependencyInjectionTests
             .AddSingleton<IContactRepository>(sp => sp.GetRequiredService<InMemoryRecipients>())
             .AddSingleton<IGroupRepository>(sp => sp.GetRequiredService<InMemoryRecipients>())
             .AddSingleton<IAuditLogRepository, InMemoryAuditLog>()
+            .AddSingleton<INotificationRepository, InMemoryNotifications>()
+            .AddSingleton<ISettingsRepository, InMemorySettings>()
             .Configure<DiscoveryOptions>(o => o.Host = "addon-host")
             .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         await using var scope = provider.CreateAsyncScope();
@@ -61,10 +65,33 @@ public sealed class DependencyInjectionTests
             typeof(DeleteGroup), typeof(ListGroups), typeof(GetGroup), typeof(GetAuditLog), typeof(AuditTrail),
         ];
         recipientUseCases.ShouldAllBe(t => scope.ServiceProvider.GetService(t) != null);
+        Type[] deliveryUseCases =
+        [
+            typeof(SendNotification), typeof(ProcessDueDeliveries), typeof(AttemptDelivery), typeof(RecoverInterruptedDeliveries),
+            typeof(GetSmsToSettings), typeof(SaveSmsToSettings), typeof(RemoveSmsToSettings), typeof(ReadSmsToCredentials),
+        ];
+        deliveryUseCases.ShouldAllBe(t => scope.ServiceProvider.GetService(t) != null);
+        provider.GetRequiredService<DeliveryWakeUp>().ShouldBeSameAs(provider.GetRequiredService<DeliveryWakeUp>());
+        provider.GetRequiredService<IOptions<DeliveryOptions>>().Value.ToPolicy().ShouldBe(Domain.Notifications.RetryPolicy.Default);
         var status = await scope.ServiceProvider.GetRequiredService<PublishDiscovery>().HandleAsync(TestContext.Current.CancellationToken);
 
         status.State.ShouldBe(DiscoveryState.Published);
         provider.GetRequiredService<TimeProvider>().ShouldBe(TimeProvider.System);
+    }
+
+    [Theory]
+    [InlineData(-1, 30, "Delivery:MaxRetries")]
+    [InlineData(21, 30, "Delivery:MaxRetries")]
+    [InlineData(3, 0, "Delivery:RetryInterval")]
+    public void Invalid_delivery_options_are_rejected(int maxRetries, int intervalSeconds, string expected)
+    {
+        using var provider = new ServiceCollection()
+            .AddApplication()
+            .Configure<DeliveryOptions>(o => (o.MaxRetries, o.RetryInterval) = (maxRetries, TimeSpan.FromSeconds(intervalSeconds)))
+            .BuildServiceProvider();
+
+        Should.Throw<OptionsValidationException>(() => provider.GetRequiredService<IOptions<DeliveryOptions>>().Value)
+            .Message.ShouldContain(expected);
     }
 
     [Fact]
