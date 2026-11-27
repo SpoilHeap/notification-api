@@ -1,6 +1,9 @@
 using System.Reflection;
 using NetArchTest.Rules;
+using NotificationApi.Application.ApiAccess;
 using NotificationApi.Application.Channels;
+using NotificationApi.Application.Common;
+using NotificationApi.Application.Discovery;
 
 namespace NotificationApi.ArchitectureTests;
 
@@ -53,15 +56,51 @@ public sealed class LayeringTests
             .GetResult()
             .ShouldPass();
 
-    [Fact]
-    public void Channel_implementations_live_in_infrastructure_and_are_sealed() =>
+    public static TheoryData<Type> Ports =>
+    [
+        typeof(INotificationChannel),
+        typeof(IDiscoveryPublisher),
+        typeof(ISecretProtector),
+        typeof(IApiClientRepository),
+        typeof(IUnitOfWork),
+    ];
+
+    [Theory]
+    [MemberData(nameof(Ports))]
+    public void Port_implementations_live_in_infrastructure_and_are_sealed(Type port) =>
         Types.InAssemblies([ApplicationAssembly, InfrastructureAssembly, WebAssembly])
             .That()
-            .ImplementInterface(typeof(INotificationChannel))
+            .ImplementInterface(port)
             .Should()
             .ResideInNamespaceStartingWith(Infrastructure)
             .And()
             .BeSealed()
+            .GetResult()
+            .ShouldPass();
+
+    [Fact]
+    public void Domain_and_application_types_are_sealed_unless_abstract_or_static() =>
+        Types.InAssemblies([DomainAssembly, ApplicationAssembly])
+            .That()
+            .AreClasses()
+            .And()
+            .AreNotAbstract() // static classes are abstract and sealed in IL
+            .And()
+            .DoNotHaveNameStartingWith("<")
+            .Should()
+            .BeSealed()
+            .GetResult()
+            .ShouldPass();
+
+    [Fact]
+    public void Plaintext_api_tokens_are_never_persisted_by_infrastructure() =>
+        // The token is stored only as a hash and in protected form (ADR 0012): no EF configuration or
+        // repository should handle the plaintext type.
+        Types.InAssembly(InfrastructureAssembly)
+            .That()
+            .ResideInNamespaceStartingWith($"{Infrastructure}.Persistence")
+            .ShouldNot()
+            .HaveDependencyOn(typeof(global::NotificationApi.Domain.ApiClients.ApiToken).FullName!)
             .GetResult()
             .ShouldPass();
 }

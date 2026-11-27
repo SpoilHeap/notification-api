@@ -11,8 +11,8 @@ public sealed class DevFakeIngressGuardTests
     {
         // The fake Ingress headers bypass the proxy check, so they must never run in Production
         // (engineering_standards.md §9).
-        await using var factory = new NotificationApiFactory()
-            .WithWebHostBuilder(b => b.UseSetting("Ingress:DevFakeIngress", "true"));
+        await using var root = new NotificationApiFactory(); // disposing the root deletes its data path
+        await using var factory = root.WithWebHostBuilder(b => b.UseSetting("Ingress:DevFakeIngress", "true"));
 
         var ex = Should.Throw<OptionsValidationException>(() => factory.CreateClient());
         ex.Message.ShouldContain("DevFakeIngress");
@@ -21,8 +21,8 @@ public sealed class DevFakeIngressGuardTests
     [Fact]
     public async Task In_development_fake_ingress_trusts_any_address_and_applies_the_ingress_path()
     {
-        await using var factory = new NotificationApiFactory()
-            .WithWebHostBuilder(b => b
+        await using var root = new NotificationApiFactory();
+        await using var factory = root.WithWebHostBuilder(b => b
                 .UseEnvironment("Development")
                 .UseSetting("Ingress:DevFakeIngress", "true"));
         using var client = factory.CreateClient();

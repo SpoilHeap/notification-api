@@ -6,5 +6,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="bunit" />
+    <PackageReference Include="WireMock.Net" />
   </ItemGroup>
 </Project>

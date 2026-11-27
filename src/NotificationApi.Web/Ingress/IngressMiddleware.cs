@@ -1,17 +1,15 @@
-using System.Net;
 using Microsoft.Extensions.Options;
 
 namespace NotificationApi.Web.Ingress;
 
 /// <summary>
-/// Marks requests from the Ingress proxy as trusted and applies <c>X-Ingress-Path</c> as the PathBase,
-/// so links, assets and form posts resolve under <c>/api/hassio_ingress/&lt;token&gt;/</c>.
-/// Requests from anywhere else are left untouched, and any Ingress headers they carry are ignored.
-/// Must run before routing.
+/// Applies <c>X-Ingress-Path</c> from the Ingress proxy as the PathBase, so links, assets and form posts resolve
+/// under <c>/api/hassio_ingress/&lt;token&gt;/</c>. Requests from anywhere else are left untouched. Must run before
+/// routing. Authentication is separate: see <see cref="IngressAuthenticationHandler"/>.
 /// </summary>
 internal sealed class IngressMiddleware(RequestDelegate next, IOptions<IngressOptions> options)
 {
-    private readonly IPAddress _proxy = IPAddress.Parse(options.Value.TrustedProxyAddress);
+    private readonly System.Net.IPAddress _proxy = System.Net.IPAddress.Parse(options.Value.TrustedProxyAddress);
     private readonly bool _devFake = options.Value.DevFakeIngress;
 
     public Task InvokeAsync(HttpContext context)
@@ -24,8 +22,6 @@ internal sealed class IngressMiddleware(RequestDelegate next, IOptions<IngressOp
         {
             return next(context);
         }
-
-        context.Items[IngressRequest.TrustedItemKey] = true;
 
         var ingressPath = context.Request.Headers[IngressHeaders.IngressPath].ToString().TrimEnd('/');
         if (ingressPath.Length > 0)
