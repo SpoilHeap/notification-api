@@ -1,5 +1,4 @@
 @page "/integration"
-@using System.Security.Claims
 @using NotificationApi.Application.ApiAccess
 @using NotificationApi.Application.Discovery
 @using NotificationApi.Application.Events
@@ -127,8 +126,7 @@
 
   private async Task SendTestEventAsync()
   {
-    var haUserId = HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
-    _testOutcome = await SendTestEvent.HandleAsync(haUserId, HttpContext.RequestAborted);
+    _testOutcome = await SendTestEvent.HandleAsync(HttpContext.User.ToAuditActor(), HttpContext.RequestAborted);
   }
 
   private static string OutcomeText(HaEventOutcome outcome) => outcome.Kind switch
@@ -140,8 +138,7 @@
 
   private async Task RevealAsync()
   {
-    var haUserId = HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
-    var result = await RevealApiToken.HandleAsync(haUserId, HttpContext.RequestAborted);
+    var result = await RevealApiToken.HandleAsync(HttpContext.User.ToAuditActor(), HttpContext.RequestAborted);
     if (result.IsSuccess)
     {
       _token = result.Value.Value;

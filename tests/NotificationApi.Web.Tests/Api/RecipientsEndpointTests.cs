@@ -11,11 +11,12 @@ namespace NotificationApi.Web.Tests.Api;
 public sealed class RecipientsEndpointTests(NotificationApiFactory factory) : IClassFixture<NotificationApiFactory>
 {
     [Fact]
-    public async Task AC40_Returns_the_revision_and_an_empty_list_with_the_revision_as_a_strong_etag()
+    public async Task AC40_A_new_database_returns_the_revision_and_an_empty_list_with_the_revision_as_a_strong_etag()
     {
-        using var client = factory.CreateClient();
+        await using var fresh = new NotificationApiFactory();
+        using var client = fresh.CreateClient();
 
-        using var response = await GetAsync(client, ifNoneMatch: null);
+        using var response = await GetAsync(client, ifNoneMatch: null, await fresh.GetApiTokenAsync());
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
@@ -62,9 +63,9 @@ public sealed class RecipientsEndpointTests(NotificationApiFactory factory) : IC
     }
 
     /// <summary>
-    /// AC43 and AC45 as far as they can go without contacts: a recipients change (recorded through the use case the
-    /// contacts feature will call) changes the revision, so the old ETag gets 200, and the <c>recipients.changed</c>
-    /// event carries the revision the next GET returns.
+    /// AC43 and AC45 at the use-case level: a recipients change changes the revision, so the old ETag gets 200, and the
+    /// <c>recipients.changed</c> event carries the revision the next GET returns. <c>RecipientsThroughUiTests</c>
+    /// covers the same through the web UI.
     /// </summary>
     [Fact]
     public async Task AC43_AC45_After_a_change_the_old_etag_is_200_and_the_event_carries_the_new_revision()
@@ -78,6 +79,7 @@ public sealed class RecipientsEndpointTests(NotificationApiFactory factory) : IC
         var before = await CurrentETagAsync(client, token);
 
         var revision = await isolated.Services.InScopeAsync<RecordRecipientsChange, string>(u => u.HandleAsync(TestContext.Current.CancellationToken));
+        await TestRequests.WaitUntilAsync(() => ha.LogEntries.Any(), "the event is sent in the background");
 
         using var response = await GetAsync(client, before, token);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);

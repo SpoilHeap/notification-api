@@ -29,6 +29,9 @@ public sealed class NotificationApiFactory : WebApplicationFactory<Program>
 
     public LogSink Logs { get; } = new();
 
+    /// <summary>Extra configuration, applied after the defaults.</summary>
+    public Dictionary<string, string> Settings { get; } = [];
+
     /// <summary>A request as HA Ingress sends it: from the proxy address, with the identity headers.</summary>
     public static HttpRequestMessage IngressRequest(HttpMethod method, string path, string remoteIp = IngressProxyIp, bool withUser = true)
     {
@@ -52,6 +55,11 @@ public sealed class NotificationApiFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Production");
         builder.UseSetting("Storage:DataPath", DataPath);
         builder.UseSetting("Discovery:Host", "notification-api-test");
+        foreach (var (key, value) in Settings)
+        {
+            builder.UseSetting(key, value);
+        }
+
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
         builder.ConfigureServices(services => services.AddSingleton<IStartupFilter, FakeRemoteIpStartupFilter>());
     }

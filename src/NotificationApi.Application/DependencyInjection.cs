@@ -2,8 +2,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using NotificationApi.Application.ApiAccess;
+using NotificationApi.Application.Audit;
+using NotificationApi.Application.Contacts;
 using NotificationApi.Application.Discovery;
 using NotificationApi.Application.Events;
+using NotificationApi.Application.Groups;
 using NotificationApi.Application.Instances;
 using NotificationApi.Application.Recipients;
 using NotificationApi.Application.Webhooks;
@@ -31,6 +34,26 @@ public static class DependencyInjection
         services.AddScoped<EnsureInstance>();
         services.AddScoped<GetRecipients>();
         services.AddScoped<RecordRecipientsChange>();
+
+        services.AddScoped<AuditTrail>();
+        services.AddScoped<GetAuditLog>();
+
+        services.AddScoped<CreateContact>();
+        services.AddScoped<RenameContact>();
+        services.AddScoped<SetContactSmsNumber>();
+        services.AddScoped<RemoveContactEndpoint>();
+        services.AddScoped<SetContactRouting>();
+        services.AddScoped<DeleteContact>();
+        services.AddScoped<ListContacts>();
+        services.AddScoped<GetContact>();
+
+        services.AddScoped<CreateGroup>();
+        services.AddScoped<RenameGroup>();
+        services.AddScoped<AddGroupMember>();
+        services.AddScoped<RemoveGroupMember>();
+        services.AddScoped<DeleteGroup>();
+        services.AddScoped<ListGroups>();
+        services.AddScoped<GetGroup>();
 
         services.AddScoped<RegisterWebhook>();
         services.AddScoped<GetWebhook>();

@@ -35,6 +35,17 @@ internal static class TestRequests
         return store.Current;
     }
 
+    /// <summary>Polls (bounded) until <paramref name="condition"/> holds: for work the app does in the background.</summary>
+    public static async Task WaitUntilAsync(Func<bool> condition, string because)
+    {
+        for (var i = 0; i < 1500 && !condition(); i++)
+        {
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        condition().ShouldBeTrue(because);
+    }
+
     /// <summary>The plaintext API token, as the HA integration receives it through discovery.</summary>
     public static async Task<string> GetApiTokenAsync(this IServiceProvider services)
     {

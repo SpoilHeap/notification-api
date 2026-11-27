@@ -3,9 +3,12 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NotificationApi.Application.ApiAccess;
+using NotificationApi.Application.Audit;
 using NotificationApi.Application.Common;
+using NotificationApi.Application.Contacts;
 using NotificationApi.Application.Discovery;
 using NotificationApi.Application.Events;
+using NotificationApi.Application.Groups;
 using NotificationApi.Application.Instances;
 using NotificationApi.Application.Recipients;
 using NotificationApi.Application.Tests.Fakes;
@@ -29,6 +32,11 @@ public sealed class DependencyInjectionTests
             .AddSingleton<IDiscoveryPublisher, FakeDiscoveryPublisher>()
             .AddSingleton<IInstanceRepository, InMemoryInstances>()
             .AddSingleton<IHaEventPublisher, FakeHaEventPublisher>()
+            .AddSingleton<IPendingHaEvents, Journal>()
+            .AddSingleton<InMemoryRecipients>()
+            .AddSingleton<IContactRepository>(sp => sp.GetRequiredService<InMemoryRecipients>())
+            .AddSingleton<IGroupRepository>(sp => sp.GetRequiredService<InMemoryRecipients>())
+            .AddSingleton<IAuditLogRepository, InMemoryAuditLog>()
             .Configure<DiscoveryOptions>(o => o.Host = "addon-host")
             .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         await using var scope = provider.CreateAsyncScope();
@@ -45,6 +53,14 @@ public sealed class DependencyInjectionTests
         scope.ServiceProvider.GetRequiredService<RemoveWebhook>().ShouldNotBeNull();
         scope.ServiceProvider.GetRequiredService<PublishHaEvent>().ShouldNotBeNull();
         scope.ServiceProvider.GetRequiredService<SendTestEvent>().ShouldNotBeNull();
+        Type[] recipientUseCases =
+        [
+            typeof(CreateContact), typeof(RenameContact), typeof(SetContactSmsNumber), typeof(RemoveContactEndpoint),
+            typeof(SetContactRouting), typeof(DeleteContact), typeof(ListContacts), typeof(GetContact),
+            typeof(CreateGroup), typeof(RenameGroup), typeof(AddGroupMember), typeof(RemoveGroupMember),
+            typeof(DeleteGroup), typeof(ListGroups), typeof(GetGroup), typeof(GetAuditLog), typeof(AuditTrail),
+        ];
+        recipientUseCases.ShouldAllBe(t => scope.ServiceProvider.GetService(t) != null);
         var status = await scope.ServiceProvider.GetRequiredService<PublishDiscovery>().HandleAsync(TestContext.Current.CancellationToken);
 
         status.State.ShouldBe(DiscoveryState.Published);

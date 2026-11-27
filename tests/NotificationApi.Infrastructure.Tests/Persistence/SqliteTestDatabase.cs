@@ -7,7 +7,7 @@ namespace NotificationApi.Infrastructure.Tests.Persistence;
 /// <summary>Real SQLite in memory. The shared connection keeps the database alive across contexts (ADR 0005).</summary>
 internal sealed class SqliteTestDatabase : IAsyncDisposable
 {
-    private readonly SqliteConnection _connection = new("Data Source=:memory:");
+    private readonly SqliteConnection _connection = new("Data Source=:memory:;Foreign Keys=True");
 
     private SqliteTestDatabase()
     {

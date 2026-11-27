@@ -1,11 +1,13 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using NotificationApi.Application.ApiAccess;
+using NotificationApi.Application.Audit;
 using NotificationApi.Application.Common;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Tests.Fakes;
 using NotificationApi.Application.Webhooks;
 using NotificationApi.Domain.ApiClients;
+using NotificationApi.Domain.Audit;
 
 namespace NotificationApi.Application.Tests.Webhooks;
 
@@ -129,15 +131,50 @@ public sealed class WebhookUseCaseTests
         await Register.HandleAsync(_client.Id, new RegisterWebhookCommand(Url, Secret), TestContext.Current.CancellationToken);
         var publisher = new FakeHaEventPublisher();
         var logger = new ListLogger<SendTestEvent>();
-        var useCase = new SendTestEvent(new PublishHaEvent(_clients, _protector, publisher, NullLogger<PublishHaEvent>.Instance), _time, logger);
+        var useCase = SendTest(publisher, logger, new InMemoryAuditLog());
 
-        var outcome = await useCase.HandleAsync("8f7e6d5c4b3a", TestContext.Current.CancellationToken);
+        var outcome = await useCase.HandleAsync(RecipientsHarness.Actor, TestContext.Current.CancellationToken);
 
         var sent = publisher.Sent.ShouldHaveSingleItem().Event;
         sent.Type.ShouldBe(HaEventTypes.WebhookTest);
         sent.Data.ShouldBeOfType<WebhookTestData>();
         outcome.ShouldBe(HaEventOutcome.Delivered(sent.Id, 200));
-        logger.Entries.ShouldHaveSingleItem().Text.ShouldContain("8f7e6d5c4b3a");
-        await Should.ThrowAsync<ArgumentException>(() => useCase.HandleAsync(" ", TestContext.Current.CancellationToken));
+        logger.Entries.ShouldHaveSingleItem().Text.ShouldContain(RecipientsHarness.Actor.HaUserId);
+        await Should.ThrowAsync<ArgumentNullException>(() => useCase.HandleAsync(null!, TestContext.Current.CancellationToken));
     }
+
+    [Theory]
+    [InlineData(true, null, "Sent a webhook.test event: delivered (HTTP 200)")]
+    [InlineData(true, 500, "Sent a webhook.test event: failed (HTTP 500)")]
+    [InlineData(true, 0, "Sent a webhook.test event: failed (no response)")]
+    [InlineData(false, null, "Sent a webhook.test event: not sent: no webhook is registered")]
+    public async Task AC82_Send_test_event_is_audited_with_its_outcome(bool registered, int? failure, string summary)
+    {
+        if (registered)
+        {
+            await Register.HandleAsync(_client.Id, new RegisterWebhookCommand(Url, Secret), TestContext.Current.CancellationToken);
+        }
+
+        var publisher = new FakeHaEventPublisher();
+        if (failure is { } status)
+        {
+            publisher.Result = status == 0 ? WebhookSendResult.Failed("unreachable") : WebhookSendResult.Failed("bad status", status);
+        }
+
+        var audit = new InMemoryAuditLog();
+        var saves = _clients.Saves;
+
+        var outcome = await SendTest(publisher, new ListLogger<SendTestEvent>(), audit).HandleAsync(RecipientsHarness.Actor, TestContext.Current.CancellationToken);
+
+        var entry = audit.Entries.ShouldHaveSingleItem();
+        entry.Action.ShouldBe(AuditAction.Send);
+        entry.EntityType.ShouldBe(AuditEntityType.WebhookEvent);
+        entry.EntityKey.ShouldBe(outcome.EventId);
+        entry.Summary.ShouldBe(summary);
+        entry.HaUserId.ShouldBe(RecipientsHarness.Actor.HaUserId);
+        _clients.Saves.ShouldBe(saves + 1);
+    }
+
+    private SendTestEvent SendTest(FakeHaEventPublisher publisher, ListLogger<SendTestEvent> logger, InMemoryAuditLog audit) =>
+        new(new PublishHaEvent(_clients, _protector, publisher, NullLogger<PublishHaEvent>.Instance), new AuditTrail(audit, _time), _clients, _time, logger);
 }

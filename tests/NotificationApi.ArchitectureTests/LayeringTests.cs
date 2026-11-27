@@ -1,11 +1,13 @@
 using System.Reflection;
 using NetArchTest.Rules;
 using NotificationApi.Application.ApiAccess;
+using NotificationApi.Application.Audit;
 using NotificationApi.Application.Channels;
 using NotificationApi.Application.Common;
 using NotificationApi.Application.Discovery;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Instances;
+using NotificationApi.Application.Recipients;
 
 namespace NotificationApi.ArchitectureTests;
 
@@ -67,6 +69,10 @@ public sealed class LayeringTests
         typeof(IUnitOfWork),
         typeof(IInstanceRepository),
         typeof(IHaEventPublisher),
+        typeof(IPendingHaEvents),
+        typeof(IContactRepository),
+        typeof(IGroupRepository),
+        typeof(IAuditLogRepository),
     ];
 
     [Theory]
@@ -105,6 +111,15 @@ public sealed class LayeringTests
             .ResideInNamespaceStartingWith($"{Infrastructure}.Persistence")
             .ShouldNot()
             .HaveDependencyOn(typeof(global::NotificationApi.Domain.ApiClients.ApiToken).FullName!)
+            .GetResult()
+            .ShouldPass();
+
+    [Fact]
+    public void Web_pages_do_not_touch_repositories_directly() =>
+        // Pages call use cases; persistence ports are for the Application layer only.
+        Types.InAssembly(WebAssembly)
+            .ShouldNot()
+            .HaveDependencyOnAny(typeof(IContactRepository).FullName!, typeof(IGroupRepository).FullName!, typeof(IAuditLogRepository).FullName!)
             .GetResult()
             .ShouldPass();
 }

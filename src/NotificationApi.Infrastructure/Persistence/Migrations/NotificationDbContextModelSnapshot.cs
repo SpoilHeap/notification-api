@@ -60,6 +60,50 @@ namespace NotificationApi.Infrastructure.Persistence.Migrations
                     b.ToTable("ApiClients", (string)null);
                 });
 
+            modelBuilder.Entity("NotificationApi.Domain.Audit.AuditEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HaUserDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HaUserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AuditLog", (string)null);
+                });
+
             modelBuilder.Entity("NotificationApi.Domain.Instances.Instance", b =>
                 {
                     b.Property<string>("Id")
@@ -77,6 +121,144 @@ namespace NotificationApi.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Instance", (string)null);
+                });
+
+            modelBuilder.Entity("NotificationApi.Domain.Recipients.Contact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Handle")
+                        .IsRequired()
+                        .HasMaxLength(70)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Routing")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Handle")
+                        .IsUnique();
+
+                    b.ToTable("Contacts", (string)null);
+                });
+
+            modelBuilder.Entity("NotificationApi.Domain.Recipients.Group", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Handle")
+                        .IsRequired()
+                        .HasMaxLength(70)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Handle")
+                        .IsUnique();
+
+                    b.ToTable("Groups", (string)null);
+                });
+
+            modelBuilder.Entity("NotificationApi.Domain.Recipients.Contact", b =>
+                {
+                    b.OwnsMany("NotificationApi.Domain.Recipients.Endpoint", "Endpoints", b1 =>
+                        {
+                            b1.Property<Guid>("ContactId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("Channel")
+                                .HasMaxLength(16)
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("Address")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("TEXT");
+
+                            b1.Property<DateTimeOffset?>("VerifiedAt")
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("ContactId", "Channel");
+
+                            b1.ToTable("ContactEndpoints", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("ContactId");
+                        });
+
+                    b.Navigation("Endpoints");
+                });
+
+            modelBuilder.Entity("NotificationApi.Domain.Recipients.Group", b =>
+                {
+                    b.OwnsMany("NotificationApi.Domain.Recipients.GroupMember", "Members", b1 =>
+                        {
+                            b1.Property<int>("Id")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<Guid>("GroupId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<Guid?>("MemberContactId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<Guid?>("MemberGroupId")
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("Id");
+
+                            b1.HasIndex("MemberContactId");
+
+                            b1.HasIndex("MemberGroupId");
+
+                            b1.HasIndex("GroupId", "MemberContactId")
+                                .IsUnique();
+
+                            b1.HasIndex("GroupId", "MemberGroupId")
+                                .IsUnique();
+
+                            b1.ToTable("GroupMembers", null, t =>
+                                {
+                                    t.HasCheckConstraint("CK_GroupMembers_ExactlyOneMember", "(\"MemberContactId\" IS NULL) <> (\"MemberGroupId\" IS NULL)");
+                                });
+
+                            b1.WithOwner()
+                                .HasForeignKey("GroupId");
+
+                            b1.HasOne("NotificationApi.Domain.Recipients.Contact", null)
+                                .WithMany()
+                                .HasForeignKey("MemberContactId")
+                                .OnDelete(DeleteBehavior.Cascade);
+
+                            b1.HasOne("NotificationApi.Domain.Recipients.Group", null)
+                                .WithMany()
+                                .HasForeignKey("MemberGroupId")
+                                .OnDelete(DeleteBehavior.Cascade);
+                        });
+
+                    b.Navigation("Members");
                 });
 #pragma warning restore 612, 618
         }

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Webhooks;
+using NotificationApi.Domain.Audit;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
@@ -52,7 +53,7 @@ public sealed class SecretLoggingTests
 
         (await client.PutWebhookAsync(token, ha.Url + WebhookPath, secret)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await client.PutWebhookAsync(token, "not a url", secret)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        var outcome = await verbose.Services.InScopeAsync<SendTestEvent, HaEventOutcome>(u => u.HandleAsync("user", TestContext.Current.CancellationToken));
+        var outcome = await verbose.Services.InScopeAsync<SendTestEvent, HaEventOutcome>(u => u.HandleAsync(new AuditActor("user", "User"), TestContext.Current.CancellationToken));
 
         outcome.Kind.ShouldBe(HaEventOutcomeKind.Failed);
         factory.Logs.Entries.ShouldContain(e => e.StartsWith("Warning", StringComparison.Ordinal) && e.Contains(outcome.EventId, StringComparison.Ordinal) && e.Contains("500", StringComparison.Ordinal));

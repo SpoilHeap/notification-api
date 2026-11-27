@@ -1,17 +1,17 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
-using NotificationApi.Application.ApiAccess;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Instances;
 using NotificationApi.Application.Recipients;
 using NotificationApi.Application.Tests.Fakes;
-using NotificationApi.Domain.ApiClients;
 
 namespace NotificationApi.Application.Tests.Instances;
 
 public sealed class InstanceUseCaseTests
 {
     private readonly InMemoryInstances _instances = new();
+    private readonly InMemoryRecipients _recipients = new();
+    private readonly Journal _queue = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 27, 16, 15, 20, TimeSpan.Zero));
 
     private EnsureInstance Ensure => new(_instances, _instances, _time, NullLogger<EnsureInstance>.Instance);
@@ -31,7 +31,7 @@ public sealed class InstanceUseCaseTests
     [Fact]
     public async Task AC40_Recipients_start_empty_at_revision_1()
     {
-        var list = await new GetRecipients(Ensure).HandleAsync(TestContext.Current.CancellationToken);
+        var list = await new GetRecipients(Ensure, _recipients, _recipients).HandleAsync(TestContext.Current.CancellationToken);
 
         list.Revision.ShouldBe("1");
         list.Recipients.ShouldBeEmpty();
@@ -40,53 +40,40 @@ public sealed class InstanceUseCaseTests
     [Fact]
     public async Task AC43_Recording_a_change_bumps_and_saves_the_revision()
     {
-        var (useCase, _) = RecordChange();
+        var useCase = RecordChange();
 
         (await useCase.HandleAsync(TestContext.Current.CancellationToken)).ShouldBe("2");
         (await useCase.HandleAsync(TestContext.Current.CancellationToken)).ShouldBe("3");
 
-        (await new GetRecipients(Ensure).HandleAsync(TestContext.Current.CancellationToken)).Revision.ShouldBe("3");
+        (await new GetRecipients(Ensure, _recipients, _recipients).HandleAsync(TestContext.Current.CancellationToken)).Revision.ShouldBe("3");
         _instances.Saves.ShouldBe(3); // creation plus two changes
     }
 
     [Fact]
-    public async Task AC45_Recording_a_change_sends_recipients_changed_with_the_new_revision()
+    public async Task AC45_Recording_a_change_queues_recipients_changed_with_the_new_revision()
     {
-        var (useCase, publisher) = RecordChange(registerWebhook: true);
+        var useCase = RecordChange();
 
         var revision = await useCase.HandleAsync(TestContext.Current.CancellationToken);
 
-        var sent = publisher.Sent.ShouldHaveSingleItem().Event;
-        sent.Type.ShouldBe(HaEventTypes.RecipientsChanged);
-        sent.Data.ShouldBe(new RecipientsChangedData(revision));
-        (await new GetRecipients(Ensure).HandleAsync(TestContext.Current.CancellationToken)).Revision.ShouldBe(revision);
+        var queued = _queue.Queued.ShouldHaveSingleItem();
+        queued.Type.ShouldBe(HaEventTypes.RecipientsChanged);
+        queued.Data.ShouldBe(new RecipientsChangedData(revision));
+        queued.OccurredAt.ShouldBe(_time.GetUtcNow());
+        (await new GetRecipients(Ensure, _recipients, _recipients).HandleAsync(TestContext.Current.CancellationToken)).Revision.ShouldBe(revision);
     }
 
     [Fact]
-    public async Task AC34_A_failed_event_does_not_undo_the_change()
+    public async Task AC32_No_event_is_queued_when_the_commit_fails()
     {
-        var (useCase, publisher) = RecordChange(registerWebhook: true);
-        publisher.Result = WebhookSendResult.Failed("the webhook is unreachable");
+        var useCase = new RecordRecipientsChange(Ensure, _queue, _queue, _time);
+        await Ensure.HandleAsync(TestContext.Current.CancellationToken);
+        _queue.FailNextSave = true;
 
-        var revision = await useCase.HandleAsync(TestContext.Current.CancellationToken);
+        await Should.ThrowAsync<InvalidOperationException>(() => useCase.HandleAsync(TestContext.Current.CancellationToken));
 
-        revision.ShouldBe("2");
-        (await new GetRecipients(Ensure).HandleAsync(TestContext.Current.CancellationToken)).Revision.ShouldBe("2");
+        _queue.Queued.ShouldBeEmpty();
     }
 
-    private (RecordRecipientsChange UseCase, FakeHaEventPublisher Publisher) RecordChange(bool registerWebhook = false)
-    {
-        var clients = new InMemoryApiClients();
-        var protector = new FakeSecretProtector();
-        if (registerWebhook)
-        {
-            var client = ApiClient.Create(ApiClientNames.HomeAssistant, ApiToken.Generate(), "protected:x", _time.GetUtcNow());
-            client.RegisterWebhook(new Uri("http://homeassistant:8123/api/webhook/x"), protector.Protect(Convert.ToBase64String(new byte[32])), _time.GetUtcNow());
-            clients.Add(client);
-        }
-
-        var publisher = new FakeHaEventPublisher();
-        var publish = new PublishHaEvent(clients, protector, publisher, NullLogger<PublishHaEvent>.Instance);
-        return (new RecordRecipientsChange(Ensure, _instances, publish, _time), publisher);
-    }
+    private RecordRecipientsChange RecordChange() => new(Ensure, _instances, _queue, _time);
 }
