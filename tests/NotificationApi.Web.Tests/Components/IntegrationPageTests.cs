@@ -15,7 +15,7 @@ public sealed partial class IntegrationPageTests(NotificationApiFactory factory)
 
         var html = await GetPageAsync(client);
 
-        html.ShouldContain("<dd data-testid=\"discovery-state\">Skipped</dd>");
+        html.ShouldContain("<span class=\"badge warning\" data-testid=\"discovery-state\">Skipped</span>");
         html.ShouldContain("SUPERVISOR_TOKEN");
         html.ShouldContain("<code>notification-api-test</code>");
         html.ShouldContain("<code>8080</code>");

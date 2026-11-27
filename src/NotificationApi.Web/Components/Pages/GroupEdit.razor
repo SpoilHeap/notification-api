@@ -12,64 +12,68 @@
 
 @if (_group is not null)
 {
-  <p><a href="groups">← Groups</a></p>
-  <h1>@_group.Name</h1>
+  <header class="page-header">
+    <a class="back" href="groups">← Groups</a>
+    <h1>@_group.Name</h1>
+  </header>
 
   @if (Saved is not null)
   {
-    <p class="ok" data-testid="flash">@SavedText(Saved)</p>
+    <p class="notice success" role="status" data-testid="flash">@SavedText(Saved)</p>
   }
 
-  <section>
+  <section class="card">
     <h2>Details</h2>
     <form method="post" @formname="rename-group" @onsubmit="RenameAsync" class="stack">
       <AntiforgeryToken />
-      <label>
-        Handle
-        <input value="@_group.Handle" readonly data-testid="handle" aria-describedby="handle-hint" />
-      </label>
-      <span class="hint" id="handle-hint">Handles can't be changed: Home Assistant automations depend on them.</span>
-      <label>
-        Name
-        <input name="Rename.Name" value="@Rename?.Name" maxlength="100" />
-      </label>
-      <FieldError Errors="_errors" Field="@RecipientFields.Name" />
-      <div><button type="submit">Save name</button></div>
+      <div class="field">
+        <label for="handle">Handle</label>
+        <input value="@_group.Handle" readonly data-testid="handle" aria-describedby="handle-hint" id="handle" />
+        <p class="hint" id="handle-hint">Handles can't be changed: Home Assistant automations depend on them.</p>
+      </div>
+      <div class="field">
+        <label for="rename-name">Name</label>
+        <input id="rename-name" name="Rename.Name" value="@Rename?.Name" maxlength="100" aria-describedby="error-@RecipientFields.Name" aria-invalid="@FieldError.Invalid(_errors, RecipientFields.Name)" />
+        <FieldError Errors="_errors" Field="@RecipientFields.Name" />
+      </div>
+      <div class="form-actions"><button type="submit">Save name</button></div>
     </form>
   </section>
 
-  <section>
+  <section class="card">
     <h2>Members</h2>
     <p class="hint">A notification to this group goes to every member, including the members of nested groups. Someone in two of the groups gets it twice.</p>
     @if (_group.Members.Count == 0)
     {
-      <p data-testid="no-members">No members yet.</p>
+      <p class="empty" data-testid="no-members">No members yet.</p>
     }
     else
     {
       <form method="post" @formname="remove-member" @onsubmit="RemoveMemberAsync">
         <AntiforgeryToken />
-        <table class="list" data-testid="members">
-          <thead><tr><th>Member</th><th>Name</th><th></th></tr></thead>
-          <tbody>
-            @foreach (var member in _group.Members)
-            {
-              <tr>
-                <td><a href="@(member.Type)s/@member.Handle[(member.Type.Length + 1)..]"><code>@member.Handle</code></a></td>
-                <td>@member.Name</td>
-                <td><button type="submit" name="member" value="@member.Handle" class="secondary">Remove</button></td>
-              </tr>
-            }
-          </tbody>
-        </table>
+        <div class="table-wrap">
+          <table class="list" data-testid="members">
+            <thead><tr><th scope="col">Member</th><th scope="col">Name</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody>
+              @foreach (var member in _group.Members)
+              {
+                <tr>
+                  <td><a href="@(member.Type)s/@member.Handle[(member.Type.Length + 1)..]"><code>@member.Handle</code></a></td>
+                  <td>@member.Name</td>
+                  <td class="actions-cell"><button type="submit" name="member" value="@member.Handle" class="secondary small" aria-label="Remove @member.Name">Remove</button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
       </form>
     }
 
-    <form method="post" @formname="add-member" @onsubmit="AddMemberAsync" class="stack">
+    <form method="post" @formname="add-member" @onsubmit="AddMemberAsync" class="stack add-member">
       <AntiforgeryToken />
-      <label>
-        Add a member
-        <select name="AddMember.Member" aria-describedby="error-@RecipientFields.Member">
+      <div class="field">
+        <label for="add-member">Add a member</label>
+        <select id="add-member" name="AddMember.Member" aria-describedby="error-@RecipientFields.Member" aria-invalid="@FieldError.Invalid(_errors, RecipientFields.Member)">
           <option value="">Choose a contact or group…</option>
           @if (Contacts.Any())
           {
@@ -90,15 +94,15 @@
             </optgroup>
           }
         </select>
-      </label>
-      <FieldError Errors="_errors" Field="@RecipientFields.Member" />
-      <div><button type="submit">Add member</button></div>
+        <FieldError Errors="_errors" Field="@RecipientFields.Member" />
+      </div>
+      <div class="form-actions"><button type="submit">Add member</button></div>
     </form>
   </section>
 
-  <section>
+  <section class="card danger-zone">
     <h2>Delete</h2>
-    <p><a href="groups/@_group.HandleName/delete" class="danger" data-testid="delete-link">Delete this group…</a></p>
+    <p><a href="groups/@_group.HandleName/delete" class="button danger-quiet" data-testid="delete-link">Delete this group…</a></p>
   </section>
 }
 

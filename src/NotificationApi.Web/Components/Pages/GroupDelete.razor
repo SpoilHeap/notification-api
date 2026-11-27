@@ -8,31 +8,37 @@
 
 @if (_group is not null)
 {
-  <p><a href="groups/@_group.HandleName">← @_group.Name</a></p>
-  <h1>Delete @_group.Name?</h1>
-  <p>
-    <code>@_group.Handle</code> will stop working in Home Assistant: automations that send to it will fail.
-    Its members are not deleted: contacts and nested groups stay as they are.
-  </p>
-  @if (_group.MemberOf.Count > 0)
-  {
-    <p>It's a member of these groups, and will be removed from them:</p>
-    <ul data-testid="member-of">
-      @foreach (var parent in _group.MemberOf)
-      {
-        <li><code>@parent.Handle</code> (@parent.Name)</li>
-      }
-    </ul>
-  }
-  else
-  {
-    <p data-testid="member-of-none">It isn't a member of any other group.</p>
-  }
-  <form method="post" @formname="delete-group" @onsubmit="DeleteAsync">
-    <AntiforgeryToken />
-    <button type="submit" class="danger">Delete group</button>
-    <a href="groups/@_group.HandleName">Cancel</a>
-  </form>
+  <header class="page-header">
+    <a class="back" href="groups/@_group.HandleName">← @_group.Name</a>
+    <h1>Delete @_group.Name?</h1>
+  </header>
+  <section class="card danger-zone confirm">
+    <p class="notice warning">
+      <span>
+        <code>@_group.Handle</code> will stop working in Home Assistant: automations that send to it will fail.
+        Its members are not deleted: contacts and nested groups stay as they are.
+      </span>
+    </p>
+    @if (_group.MemberOf.Count > 0)
+    {
+      <p>It's a member of these groups, and will be removed from them:</p>
+      <ul data-testid="member-of">
+        @foreach (var parent in _group.MemberOf)
+        {
+          <li><code>@parent.Handle</code> (@parent.Name)</li>
+        }
+      </ul>
+    }
+    else
+    {
+      <p data-testid="member-of-none">It isn't a member of any other group.</p>
+    }
+    <form method="post" @formname="delete-group" @onsubmit="DeleteAsync" class="actions">
+      <AntiforgeryToken />
+      <button type="submit" class="danger">Delete group</button>
+      <a href="groups/@_group.HandleName" class="button secondary">Cancel</a>
+    </form>
+  </section>
 }
 
 @code {

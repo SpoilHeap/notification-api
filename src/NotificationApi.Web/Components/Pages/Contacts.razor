@@ -7,59 +7,70 @@
 
 <PageTitle>Contacts · Notification API</PageTitle>
 
-<h1>Contacts</h1>
+<header class="page-header">
+  <h1>Contacts</h1>
+</header>
 
 @if (Deleted is not null)
 {
-  <p class="ok" data-testid="flash">Deleted contact:@Deleted.</p>
+  <p class="notice success" role="status" data-testid="flash">Deleted contact:@Deleted.</p>
 }
 
-@if (_contacts.Count == 0)
-{
-  <p data-testid="empty">No contacts yet. Create one below.</p>
-}
-else
-{
-  <table class="list" data-testid="contacts">
-    <thead><tr><th>Handle</th><th>Name</th><th>Endpoints</th></tr></thead>
-    <tbody>
-      @foreach (var contact in _contacts)
-      {
-        <tr>
-          <td><a href="contacts/@contact.HandleName"><code>@contact.Handle</code></a></td>
-          <td>@contact.Name</td>
-          <td>
-            @if (contact.Endpoints.Count == 0)
-            {
-              <span class="hint">None</span>
-            }
-            @foreach (var endpoint in contact.Endpoints)
-            {
-              <span class="endpoint">@ChannelNames.Of(endpoint.Channel) @endpoint.MaskedAddress</span>
-            }
-          </td>
-        </tr>
-      }
-    </tbody>
-  </table>
-}
+<section class="card flush">
+  @if (_contacts.Count == 0)
+  {
+    <p class="empty" data-testid="empty">No contacts yet. Create one below.</p>
+  }
+  else
+  {
+    <div class="table-wrap">
+      <table class="list reflow" data-testid="contacts">
+        <thead><tr><th scope="col">Handle</th><th scope="col">Name</th><th scope="col">Endpoints</th></tr></thead>
+        <tbody>
+          @foreach (var contact in _contacts)
+          {
+            <tr>
+              <td><a href="contacts/@contact.HandleName"><code>@contact.Handle</code></a></td>
+              <td>@contact.Name</td>
+              <td>
+                @if (contact.Endpoints.Count == 0)
+                {
+                  <span class="hint">None</span>
+                }
+                else
+                {
+                  <span class="endpoints">
+                    @foreach (var endpoint in contact.Endpoints)
+                    {
+                      <span class="chip">@ChannelNames.Of(endpoint.Channel) @endpoint.MaskedAddress</span>
+                    }
+                  </span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
 
-<section>
+<section class="card">
   <h2>New contact</h2>
   <form method="post" @formname="create-contact" @onsubmit="CreateAsync" class="stack">
     <AntiforgeryToken />
-    <label>
-      Handle
-      <span class="with-prefix"><span class="prefix">contact:</span><input name="NewContact.Handle" value="@NewContact?.Handle" maxlength="64" autocomplete="off" aria-describedby="handle-hint" /></span>
-    </label>
-    <span class="hint" id="handle-hint">Lower-case letters, digits and underscores. Home Assistant automations use it, so it can't be changed later.</span>
-    <FieldError Errors="_errors" Field="@RecipientFields.Handle" />
-    <label>
-      Name
-      <input name="NewContact.Name" value="@NewContact?.Name" maxlength="100" />
-    </label>
-    <FieldError Errors="_errors" Field="@RecipientFields.Name" />
-    <div><button type="submit">Create contact</button></div>
+    <div class="field">
+      <label for="new-handle">Handle</label>
+      <div class="input-prefix"><span class="prefix">contact:</span><input id="new-handle" name="NewContact.Handle" value="@NewContact?.Handle" maxlength="64" autocomplete="off" aria-describedby="handle-hint error-@RecipientFields.Handle" aria-invalid="@FieldError.Invalid(_errors, RecipientFields.Handle)" /></div>
+      <p class="hint" id="handle-hint">Lower-case letters, digits and underscores. Home Assistant automations use it, so it can't be changed later.</p>
+      <FieldError Errors="_errors" Field="@RecipientFields.Handle" />
+    </div>
+    <div class="field">
+      <label for="new-name">Name</label>
+      <input id="new-name" name="NewContact.Name" value="@NewContact?.Name" maxlength="100" aria-describedby="error-@RecipientFields.Name" aria-invalid="@FieldError.Invalid(_errors, RecipientFields.Name)" />
+      <FieldError Errors="_errors" Field="@RecipientFields.Name" />
+    </div>
+    <div class="form-actions"><button type="submit">Create contact</button></div>
   </form>
 </section>
 

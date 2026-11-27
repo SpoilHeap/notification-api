@@ -10,9 +10,11 @@
 
 <PageTitle>Integration · Notification API</PageTitle>
 
-<h1>Home Assistant integration</h1>
+<header class="page-header">
+  <h1>Home Assistant integration</h1>
+</header>
 
-<section>
+<section class="card">
   <h2>Discovery</h2>
   <p>
     The add-on announces itself to Home Assistant through Supervisor discovery on every start.
@@ -20,7 +22,7 @@
   </p>
   <dl class="details">
     <dt>Status</dt>
-    <dd data-testid="discovery-state">@StateText(_details.Discovery.State)</dd>
+    <dd><span class="badge @StateBadge(_details.Discovery.State)" data-testid="discovery-state">@StateText(_details.Discovery.State)</span></dd>
     @if (_details.Discovery.Uuid is { } uuid)
     {
       <dt>Discovery id</dt>
@@ -44,7 +46,7 @@
   </dl>
 </section>
 
-<section>
+<section class="card">
   <h2>Manual setup</h2>
   <p>If Home Assistant didn't discover the add-on, add the <em>Notification API</em> integration by hand with these values.</p>
   <dl class="details">
@@ -56,18 +58,20 @@
     <dd>
       @if (_token is not null)
       {
-        <code data-testid="api-token">@_token</code>
-        <p class="hint">Treat this like a password. Anyone on the Supervisor network who has it can send notifications.</p>
+        <div class="secret">
+          <code data-testid="api-token">@_token</code>
+          <p class="hint">Treat this like a password. Anyone on the Supervisor network who has it can send notifications.</p>
+        </div>
       }
       else
       {
         <form method="post" @formname="reveal-api-token" @onsubmit="RevealAsync">
           <AntiforgeryToken />
-          <button type="submit">Reveal API token</button>
+          <button type="submit" class="secondary">Reveal API token</button>
         </form>
         @if (_revealError is not null)
         {
-          <p class="error" data-testid="reveal-error">@_revealError</p>
+          <p class="notice error" role="alert" data-testid="reveal-error">@_revealError</p>
         }
       }
     </dd>
@@ -75,7 +79,7 @@
   @* TODO(token rotation): add a "Rotate token" action that replaces the token and re-publishes discovery. Out of scope for now. *@
 </section>
 
-<section>
+<section class="card">
   <h2>Events webhook</h2>
   <p>
     The integration registers a webhook when it's set up, and the add-on sends delivery and recipient events to it,
@@ -85,7 +89,7 @@
     <dt>Status</dt>
     @if (_webhook is not null)
     {
-      <dd data-testid="webhook-state">Registered</dd>
+      <dd><span class="badge success" data-testid="webhook-state">Registered</span></dd>
       <dt>URL</dt>
       <dd><code data-testid="webhook-url">@_webhook.Url.OriginalString</code></dd>
       <dt>Registered</dt>
@@ -98,14 +102,14 @@
   </dl>
   @if (_webhook is not null)
   {
-    <form method="post" @formname="send-test-event" @onsubmit="SendTestEventAsync">
+    <form method="post" @formname="send-test-event" @onsubmit="SendTestEventAsync" class="actions">
       <AntiforgeryToken />
       <button type="submit">Send test event</button>
     </form>
   }
   @if (_testOutcome is not null)
   {
-    <p class="@(_testOutcome.Kind == HaEventOutcomeKind.Delivered ? "ok" : "error")" data-testid="test-event-result">@OutcomeText(_testOutcome)</p>
+    <p class="notice @(_testOutcome.Kind == HaEventOutcomeKind.Delivered ? "success" : "error")" role="status" data-testid="test-event-result">@OutcomeText(_testOutcome)</p>
   }
 </section>
 
@@ -149,6 +153,14 @@
       _revealError = result.Error.Message;
     }
   }
+
+  private static string StateBadge(DiscoveryState state) => state switch
+  {
+    DiscoveryState.Published => "success",
+    DiscoveryState.Skipped => "warning",
+    DiscoveryState.Failed => "danger",
+    _ => "info",
+  };
 
   private static string StateText(DiscoveryState state) => state switch
   {

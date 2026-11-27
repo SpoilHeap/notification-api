@@ -13,4 +13,8 @@
   [Parameter] public IReadOnlyDictionary<string, string[]>? Errors { get; set; }
 
   [Parameter, EditorRequired] public string Field { get; set; } = string.Empty;
+
+  /// <summary>The <c>aria-invalid</c> value for an input: "true" when the field has errors, otherwise no attribute.</summary>
+  public static string? Invalid(IReadOnlyDictionary<string, string[]>? errors, string field) =>
+    errors is not null && errors.TryGetValue(field, out var messages) && messages.Length > 0 ? "true" : null;
 }

@@ -6,50 +6,56 @@
 
 <PageTitle>Groups · Notification API</PageTitle>
 
-<h1>Groups</h1>
+<header class="page-header">
+  <h1>Groups</h1>
+</header>
 
 @if (Deleted is not null)
 {
-  <p class="ok" data-testid="flash">Deleted group:@Deleted.</p>
+  <p class="notice success" role="status" data-testid="flash">Deleted group:@Deleted.</p>
 }
 
-@if (_groups.Count == 0)
-{
-  <p data-testid="empty">No groups yet. Create one below, then add contacts and other groups to it.</p>
-}
-else
-{
-  <table class="list" data-testid="groups">
-    <thead><tr><th>Handle</th><th>Name</th><th>Members</th></tr></thead>
-    <tbody>
-      @foreach (var group in _groups)
-      {
-        <tr>
-          <td><a href="groups/@group.HandleName"><code>@group.Handle</code></a></td>
-          <td>@group.Name</td>
-          <td>@Plural(group.ContactCount, "contact"), @Plural(group.GroupCount, "group")</td>
-        </tr>
-      }
-    </tbody>
-  </table>
-}
+<section class="card flush">
+  @if (_groups.Count == 0)
+  {
+    <p class="empty" data-testid="empty">No groups yet. Create one below, then add contacts and other groups to it.</p>
+  }
+  else
+  {
+    <div class="table-wrap">
+      <table class="list reflow" data-testid="groups">
+        <thead><tr><th scope="col">Handle</th><th scope="col">Name</th><th scope="col">Members</th></tr></thead>
+        <tbody>
+          @foreach (var group in _groups)
+          {
+            <tr>
+              <td><a href="groups/@group.HandleName"><code>@group.Handle</code></a></td>
+              <td>@group.Name</td>
+              <td>@Plural(group.ContactCount, "contact"), @Plural(group.GroupCount, "group")</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
 
-<section>
+<section class="card">
   <h2>New group</h2>
   <form method="post" @formname="create-group" @onsubmit="CreateAsync" class="stack">
     <AntiforgeryToken />
-    <label>
-      Handle
-      <span class="with-prefix"><span class="prefix">group:</span><input name="NewGroup.Handle" value="@NewGroup?.Handle" maxlength="64" autocomplete="off" aria-describedby="handle-hint" /></span>
-    </label>
-    <span class="hint" id="handle-hint">Lower-case letters, digits and underscores. It can't be changed later.</span>
-    <FieldError Errors="_errors" Field="@RecipientFields.Handle" />
-    <label>
-      Name
-      <input name="NewGroup.Name" value="@NewGroup?.Name" maxlength="100" />
-    </label>
-    <FieldError Errors="_errors" Field="@RecipientFields.Name" />
-    <div><button type="submit">Create group</button></div>
+    <div class="field">
+      <label for="new-handle">Handle</label>
+      <div class="input-prefix"><span class="prefix">group:</span><input id="new-handle" name="NewGroup.Handle" value="@NewGroup?.Handle" maxlength="64" autocomplete="off" aria-describedby="handle-hint error-@RecipientFields.Handle" aria-invalid="@FieldError.Invalid(_errors, RecipientFields.Handle)" /></div>
+      <p class="hint" id="handle-hint">Lower-case letters, digits and underscores. It can't be changed later.</p>
+      <FieldError Errors="_errors" Field="@RecipientFields.Handle" />
+    </div>
+    <div class="field">
+      <label for="new-name">Name</label>
+      <input id="new-name" name="NewGroup.Name" value="@NewGroup?.Name" maxlength="100" aria-describedby="error-@RecipientFields.Name" aria-invalid="@FieldError.Invalid(_errors, RecipientFields.Name)" />
+      <FieldError Errors="_errors" Field="@RecipientFields.Name" />
+    </div>
+    <div class="form-actions"><button type="submit">Create group</button></div>
   </form>
 </section>
 

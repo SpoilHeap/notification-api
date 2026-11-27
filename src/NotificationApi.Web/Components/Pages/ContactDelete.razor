@@ -8,31 +8,37 @@
 
 @if (_contact is not null)
 {
-  <p><a href="contacts/@_contact.HandleName">← @_contact.Name</a></p>
-  <h1>Delete @_contact.Name?</h1>
-  <p>
-    <code>@_contact.Handle</code> will stop working in Home Assistant: automations that send to it will fail.
-    Its endpoints and routing are deleted too.
-  </p>
-  @if (_contact.MemberOf.Count > 0)
-  {
-    <p>It's a member of these groups, and will be removed from them:</p>
-    <ul data-testid="member-of">
-      @foreach (var group in _contact.MemberOf)
-      {
-        <li><code>@group.Handle</code> (@group.Name)</li>
-      }
-    </ul>
-  }
-  else
-  {
-    <p data-testid="member-of-none">It isn't a member of any group.</p>
-  }
-  <form method="post" @formname="delete-contact" @onsubmit="DeleteAsync">
-    <AntiforgeryToken />
-    <button type="submit" class="danger">Delete contact</button>
-    <a href="contacts/@_contact.HandleName">Cancel</a>
-  </form>
+  <header class="page-header">
+    <a class="back" href="contacts/@_contact.HandleName">← @_contact.Name</a>
+    <h1>Delete @_contact.Name?</h1>
+  </header>
+  <section class="card danger-zone confirm">
+    <p class="notice warning">
+      <span>
+        <code>@_contact.Handle</code> will stop working in Home Assistant: automations that send to it will fail.
+        Its endpoints and routing are deleted too.
+      </span>
+    </p>
+    @if (_contact.MemberOf.Count > 0)
+    {
+      <p>It's a member of these groups, and will be removed from them:</p>
+      <ul data-testid="member-of">
+        @foreach (var group in _contact.MemberOf)
+        {
+          <li><code>@group.Handle</code> (@group.Name)</li>
+        }
+      </ul>
+    }
+    else
+    {
+      <p data-testid="member-of-none">It isn't a member of any group.</p>
+    }
+    <form method="post" @formname="delete-contact" @onsubmit="DeleteAsync" class="actions">
+      <AntiforgeryToken />
+      <button type="submit" class="danger">Delete contact</button>
+      <a href="contacts/@_contact.HandleName" class="button secondary">Cancel</a>
+    </form>
+  </section>
 }
 
 @code {
