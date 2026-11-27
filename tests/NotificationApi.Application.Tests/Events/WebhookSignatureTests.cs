@@ -32,6 +32,17 @@ public sealed class WebhookSignatureTests
     }
 
     [Fact]
+    public void Matches_the_vector_from_the_HA_integration()
+    {
+        // Cross-repo check: notification-api-ha's Python verifier (tests/test_receiver.py) uses this vector.
+        // A mismatch means the two implementations disagree on the signed bytes or the key.
+        const string body = """{"id":"evt_test_0001","type":"webhook.test","occurred_at":"2026-11-27T16:15:20Z","data":{}}""";
+
+        WebhookSignature.Compute(Convert.FromBase64String(SpecSecret), SpecTimestamp, Encoding.UTF8.GetBytes(body))
+            .ShouldBe("sha256=51e8fd165211ea54ae0a0993391d96791f82a347df714ce5f82d3a627b971b94");
+    }
+
+    [Fact]
     public void Changes_with_the_timestamp_and_the_body()
     {
         var key = Convert.FromBase64String(SpecSecret);
