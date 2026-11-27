@@ -131,3 +131,24 @@ public sealed class ContactTests
         alice.Routing.ShouldBe(ContactRouting.Empty);
     }
 }
+
+public sealed class ContactTelegramTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 11, 27, 16, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void Linking_telegram_adds_a_verified_endpoint_and_relinking_replaces_the_chat()
+    {
+        var alice = Contact.Create(Handle.Contact("alice"), DisplayName.Create("Alice"), Now);
+
+        alice.LinkTelegram("1001", Now).ShouldBeTrue();
+        alice.LinkTelegram("1001", Now).ShouldBeFalse();
+        alice.LinkTelegram("-100200", Now.AddDays(1)).ShouldBeTrue();
+
+        var endpoint = alice.EndpointFor(ChannelType.Telegram).ShouldNotBeNull();
+        endpoint.Address.ShouldBe("-100200");
+        endpoint.VerifiedAt.ShouldBe(Now.AddDays(1));
+        endpoint.MaskedAddress.ShouldBe("linked");
+        Should.Throw<ArgumentException>(() => alice.LinkTelegram("@alice", Now));
+    }
+}

@@ -142,7 +142,7 @@ public sealed class AuditLogPageTests
     }
 
     /// <summary>Each row as "user | action | what | details", with the markup stripped.</summary>
-    private static List<string> AuditRows(string html)
+    internal static List<string> AuditRows(string html)
     {
         var body = html[html.IndexOf("<tbody>", StringComparison.Ordinal)..html.IndexOf("</tbody>", StringComparison.Ordinal)];
         return System.Text.RegularExpressions.Regex.Matches(body, "<tr>(.*?)</tr>", System.Text.RegularExpressions.RegexOptions.Singleline)

@@ -57,6 +57,29 @@ Creating, renaming or deleting a contact or group updates the integration's enti
 **Audit log** lists every change made in the web UI, newest first, with the Home Assistant user who
 made it. Phone numbers are masked there too.
 
+## SMS (SMS.to)
+
+SMS messages are sent through [SMS.to](https://sms.to). In your SMS.to account, create an API key, then
+open the add-on's **Settings** page and enter it under **SMS.to**, with an optional **sender ID** (what
+the phone shows as the sender: up to 11 letters or digits, or a phone number; leave it blank for your
+account's default, and note that some countries require a registered sender ID). The key is stored
+encrypted and only ever shown masked. To change the sender ID only, leave the key blank. Changes apply
+to the next message, with no restart.
+
+Until a key is saved, SMS deliveries fail with "SMS.to is not configured". SMS.to accepting a message
+counts as sent: delivery reports from the phone network aren't tracked.
+
+## Sending and retries
+
+Home Assistant sends a notification to handles with a priority. Each contact's routing for that
+priority decides the channels (an automation can override them), and only set-up channels are used.
+The add-on answers at once and sends in the background. A failed send is tried again 3 more times,
+30 seconds apart; after that it counts as failed, and the integration fires
+`notification_api_delivery_failed` with the error. Successful sends fire
+`notification_api_delivery_sent`. Messages waiting to be sent or retried survive a restart of the
+add-on. A message that was being sent at the very moment the add-on crashed is reported as failed
+rather than sent again, so nobody gets it twice. Telegram deliveries fail until Telegram linking arrives.
+
 ## Home Assistant integration
 
 The companion integration (`notification-api-ha`, installed through HACS) is discovered automatically

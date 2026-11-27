@@ -54,7 +54,11 @@ On startup the app applies any pending database migrations and generates the API
 
 ```sh
 curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/ping
+curl -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+  -d '{"to":["contact:alice"],"message":"Hello","priority":"normal"}' http://localhost:8080/api/v1/notify
 ```
+
+Deliveries are sent by a background worker. Locally there is no Telegram channel yet, and SMS goes to the real SMS.to only once an API key is saved on the **Settings** page; until then SMS deliveries fail with "SMS.to is not configured".
 
 Without fake Ingress (any environment other than Development), the UI answers 403 unless the request comes from the Ingress proxy (`Ingress:TrustedProxyAddress`, default `172.30.32.2`). `/health` is always anonymous.
 
@@ -145,7 +149,8 @@ The HA integration (Python, installed through HACS) lives in a separate repo, `n
   [0010 xUnit v3 on MTP](docs/adr/0010-xunit-v3-on-microsoft-testing-platform.md) ·
   [0011 No NuGet lock files](docs/adr/0011-no-nuget-lock-files.md) ·
   [0012 API token hashed and encrypted](docs/adr/0012-api-token-hashed-and-encrypted.md) ·
-  [0013 HA events from an in-process queue](docs/adr/0013-ha-events-sent-from-an-in-process-queue.md)
+  [0013 HA events from an in-process queue](docs/adr/0013-ha-events-sent-from-an-in-process-queue.md) ·
+  [0014 Persisted delivery queue](docs/adr/0014-persisted-delivery-queue.md)
 
 ## Licence
 

@@ -8,7 +8,9 @@ using NotificationApi.Application.Discovery;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Groups;
 using NotificationApi.Application.Instances;
+using NotificationApi.Application.Notifications;
 using NotificationApi.Application.Recipients;
+using NotificationApi.Application.Settings;
 using NotificationApi.Application.Webhooks;
 
 namespace NotificationApi.Application;
@@ -60,6 +62,21 @@ public static class DependencyInjection
         services.AddScoped<RemoveWebhook>();
         services.AddScoped<PublishHaEvent>();
         services.AddScoped<SendTestEvent>();
+
+        // Delivery (spec §5, ADR 0014). The Delivery section is bound by the composition root.
+        services.AddOptions<DeliveryOptions>().ValidateOnStart();
+        services.AddSingleton<IValidateOptions<DeliveryOptions>, DeliveryOptionsValidator>();
+        services.AddSingleton<DeliveryWakeUp>();
+        services.AddScoped<SendNotification>();
+        services.AddScoped<ProcessDueDeliveries>();
+        services.AddScoped<AttemptDelivery>();
+        services.AddScoped<RecoverInterruptedDeliveries>();
+        services.AddScoped<AbandonDelivery>();
+
+        services.AddScoped<GetSmsToSettings>();
+        services.AddScoped<SaveSmsToSettings>();
+        services.AddScoped<RemoveSmsToSettings>();
+        services.AddScoped<ReadSmsToCredentials>();
         return services;
     }
 }

@@ -28,12 +28,15 @@ public sealed class MigrationTests : IDisposable
         (await db.Database.GetPendingMigrationsAsync(TestContext.Current.CancellationToken)).ShouldBeEmpty();
         (await db.Database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken))
             .Select(m => m[15..]) // drop the timestamp prefix
-            .ShouldBe(["InitialCreate", "AddWebhookAndInstance", "AddContactsGroupsAndAuditLog"]);
+            .ShouldBe(["InitialCreate", "AddWebhookAndInstance", "AddContactsGroupsAndAuditLog", "AddNotificationsDeliveriesAndSettings"]);
         (await db.ApiClients.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
         (await db.Instances.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
         (await db.Contacts.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
         (await db.Groups.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
         (await db.AuditLog.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
+        (await db.Notifications.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
+        (await db.Deliveries.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
+        (await db.Settings.CountAsync(TestContext.Current.CancellationToken)).ShouldBe(0);
     }
 
     [Fact]

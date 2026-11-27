@@ -27,8 +27,12 @@ builder.Services
     .AddNotificationApiAuth()
     .AddDiscovery(builder.Configuration);
 
-// Sends queued HA events (recipients.changed) after the request that caused them has finished.
+// Sends queued HA events (recipients.changed, delivery.sent/failed) after the change that caused them is committed.
 builder.Services.AddHostedService<HaEventSenderService>();
+
+// The delivery worker (ADR 0014). Registered after the event sender, so it stops first on shutdown and the events of
+// attempts that finish while stopping can still be sent.
+builder.Services.AddDelivery(builder.Configuration);
 
 // The API contract is snake_case throughout (spec §4): instance_id, registered_at, idempotency_key.
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower);

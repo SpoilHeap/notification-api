@@ -37,6 +37,67 @@
         }
       }
     },
+    "/api/v1/notify": {
+      "post": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Queues a notification for the given handles and answers 202 at once; delivery happens in the background. 400 for an invalid payload or unknown handle, 422 when nothing would be delivered.",
+        "operationId": "Notify",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/recipients": {
       "get": {
         "tags": [
@@ -223,6 +284,133 @@
                 "type": "string"
               }
             }
+          }
+        }
+      },
+      "NotifyDeliveryResponse": {
+        "required": [
+          "delivery_id",
+          "contact",
+          "via",
+          "channel",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "delivery_id": {
+            "type": "string",
+            "description": "`dlv_` plus 32 lower-case hex digits."
+          },
+          "contact": {
+            "type": "string",
+            "description": "The contact's handle name, without `contact:`, e.g. `alice`."
+          },
+          "via": {
+            "type": "string",
+            "description": "The handle from `to` that reached the contact."
+          },
+          "channel": {
+            "type": "string",
+            "description": "`telegram` or `sms`."
+          },
+          "status": {
+            "type": "string",
+            "description": "Always `queued` here; later states arrive as events."
+          }
+        }
+      },
+      "NotifyRequest": {
+        "required": [
+          "to",
+          "message",
+          "priority"
+        ],
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Recipient handles, e.g. `contact:alice`, `group:family`. Required, non-empty."
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Required, 1-4000 characters."
+          },
+          "priority": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Required: low, normal, high or critical (lower case)."
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional, at most 200 characters."
+          },
+          "channels": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional override: telegram and/or sms. Omitted, null or [] means each contact's routing decides."
+          },
+          "tag": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional, at most 200 characters. Logged and passed back in delivery events."
+          },
+          "actions": {
+            "description": "Reserved for v2. Omitted, null or [] only."
+          },
+          "source": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional, at most 200 characters, e.g. the automation's entity id."
+          },
+          "idempotency_key": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Optional, at most 200 characters. The same key within 24 h returns the first answer and sends nothing new."
+          }
+        }
+      },
+      "NotifyResponse": {
+        "required": [
+          "notification_id",
+          "deliveries"
+        ],
+        "type": "object",
+        "properties": {
+          "notification_id": {
+            "type": "string",
+            "description": "`ntf_` plus 32 lower-case hex digits."
+          },
+          "deliveries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotifyDeliveryResponse"
+            },
+            "description": "One per (contact, via, channel), in request order, depth-first, then channel order."
           }
         }
       },

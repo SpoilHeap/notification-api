@@ -7,7 +7,9 @@ using NotificationApi.Application.Common;
 using NotificationApi.Application.Discovery;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Instances;
+using NotificationApi.Application.Notifications;
 using NotificationApi.Application.Recipients;
+using NotificationApi.Application.Settings;
 
 namespace NotificationApi.ArchitectureTests;
 
@@ -73,6 +75,8 @@ public sealed class LayeringTests
         typeof(IContactRepository),
         typeof(IGroupRepository),
         typeof(IAuditLogRepository),
+        typeof(INotificationRepository),
+        typeof(ISettingsRepository),
     ];
 
     [Theory]
@@ -119,7 +123,26 @@ public sealed class LayeringTests
         // Pages call use cases; persistence ports are for the Application layer only.
         Types.InAssembly(WebAssembly)
             .ShouldNot()
-            .HaveDependencyOnAny(typeof(IContactRepository).FullName!, typeof(IGroupRepository).FullName!, typeof(IAuditLogRepository).FullName!)
+            .HaveDependencyOnAny(
+                typeof(IContactRepository).FullName!,
+                typeof(IGroupRepository).FullName!,
+                typeof(IAuditLogRepository).FullName!,
+                typeof(INotificationRepository).FullName!,
+                typeof(ISettingsRepository).FullName!)
+            .GetResult()
+            .ShouldPass();
+}
+
+public sealed class ChannelTests
+{
+    [Fact]
+    public void Channels_send_rendered_text_and_never_format_messages_themselves() =>
+        // Formatting is one place (MessageFormatter, AC24/AC25); channels send OutboundMessage.Text.
+        Types.InAssembly(typeof(global::NotificationApi.Infrastructure.StorageOptions).Assembly)
+            .That()
+            .ImplementInterface(typeof(INotificationChannel))
+            .ShouldNot()
+            .HaveDependencyOn(typeof(global::NotificationApi.Domain.Notifications.MessageFormatter).FullName!)
             .GetResult()
             .ShouldPass();
 }
