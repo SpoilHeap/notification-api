@@ -5,42 +5,52 @@
 
 <PageTitle>Audit log · Notification API</PageTitle>
 
-<h1>Audit log</h1>
-<p class="hint">Every change made in this web UI, newest first, with the Home Assistant user who made it. Phone numbers are masked.</p>
+<header class="page-header">
+  <h1>Audit log</h1>
+  <p class="lead">Every change made in this web UI, newest first, with the Home Assistant user who made it. Phone numbers are masked.</p>
+</header>
 
-@if (_page.Total == 0)
-{
-  <p data-testid="empty">Nothing has been recorded yet.</p>
-}
-else
-{
-  <table class="list" data-testid="audit">
-    <thead><tr><th>When (UTC)</th><th>User</th><th>Action</th><th>What</th><th>Details</th></tr></thead>
-    <tbody>
-      @foreach (var entry in _page.Entries)
-      {
-        <tr>
-          <td>@entry.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td>
-          <td title="HA user id @entry.HaUserId">@entry.HaUserDisplayName</td>
-          <td>@entry.Action</td>
-          <td>@entry.EntityType <code>@entry.EntityKey</code></td>
-          <td>@entry.Summary</td>
-        </tr>
-      }
-    </tbody>
-  </table>
-  <nav class="pager" aria-label="Pages">
-    @if (_page.Page > 1)
-    {
-      <a href="audit?page=@(_page.Page - 1)" data-testid="newer">← Newer</a>
-    }
-    <span>Page @_page.Page of @_page.PageCount (@_page.Total entries)</span>
-    @if (_page.Page < _page.PageCount)
-    {
-      <a href="audit?page=@(_page.Page + 1)" data-testid="older">Older →</a>
-    }
-  </nav>
-}
+<section class="card flush">
+  @if (_page.Total == 0)
+  {
+    <p class="empty" data-testid="empty">Nothing has been recorded yet.</p>
+  }
+  else
+  {
+    <div class="table-wrap">
+      <table class="list audit reflow" data-testid="audit">
+        <thead><tr><th scope="col">When (UTC)</th><th scope="col">User</th><th scope="col">Action</th><th scope="col">What</th><th scope="col">Details</th></tr></thead>
+        <tbody>
+          @foreach (var entry in _page.Entries)
+          {
+            <tr>
+              <td class="nowrap">@entry.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td>
+              <td title="HA user id @entry.HaUserId">@entry.HaUserDisplayName</td>
+              <td><span class="chip">@entry.Action</span></td>
+              <td class="what">@entry.EntityType <code>@entry.EntityKey</code></td>
+              <td class="summary">@entry.Summary</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <nav class="pager" aria-label="Pages">
+      <span class="pager-link">
+        @if (_page.Page > 1)
+        {
+          <a href="audit?page=@(_page.Page - 1)" data-testid="newer">← Newer</a>
+        }
+      </span>
+      <span class="pager-status">Page @_page.Page of @_page.PageCount (@_page.Total entries)</span>
+      <span class="pager-link next">
+        @if (_page.Page < _page.PageCount)
+        {
+          <a href="audit?page=@(_page.Page + 1)" data-testid="older">Older →</a>
+        }
+      </span>
+    </nav>
+  }
+</section>
 
 @code {
   private AuditLogPage _page = new([], 1, 1, 0);

@@ -14,114 +14,124 @@
 
 @if (_contact is not null)
 {
-  <p><a href="contacts">← Contacts</a></p>
-  <h1>@_contact.Name</h1>
+  <header class="page-header">
+    <a class="back" href="contacts">← Contacts</a>
+    <h1>@_contact.Name</h1>
+  </header>
 
   @if (Saved is not null)
   {
-    <p class="ok" data-testid="flash">@SavedText(Saved)</p>
+    <p class="notice success" role="status" data-testid="flash">@SavedText(Saved)</p>
   }
 
-  <section>
+  <section class="card">
     <h2>Details</h2>
     <form method="post" @formname="rename-contact" @onsubmit="RenameAsync" class="stack">
       <AntiforgeryToken />
-      <label>
-        Handle
-        <input value="@_contact.Handle" readonly data-testid="handle" aria-describedby="handle-hint" />
-      </label>
-      <span class="hint" id="handle-hint">Handles can't be changed: Home Assistant automations depend on them.</span>
-      <label>
-        Name
-        <input name="Rename.Name" value="@Rename?.Name" maxlength="100" />
-      </label>
-      <FieldError Errors="_errors" Field="@RecipientFields.Name" />
-      <div><button type="submit">Save name</button></div>
+      <div class="field">
+        <label for="handle">Handle</label>
+        <input value="@_contact.Handle" readonly data-testid="handle" aria-describedby="handle-hint" id="handle" />
+        <p class="hint" id="handle-hint">Handles can't be changed: Home Assistant automations depend on them.</p>
+      </div>
+      <div class="field">
+        <label for="rename-name">Name</label>
+        <input id="rename-name" name="Rename.Name" value="@Rename?.Name" maxlength="100" aria-describedby="error-@RecipientFields.Name" aria-invalid="@FieldError.Invalid(_errors, RecipientFields.Name)" />
+        <FieldError Errors="_errors" Field="@RecipientFields.Name" />
+      </div>
+      <div class="form-actions"><button type="submit">Save name</button></div>
     </form>
   </section>
 
-  <section>
+  <section class="card">
     <h2>Endpoints</h2>
-    <h3>SMS</h3>
-    @if (Endpoint(ChannelType.Sms) is { } sms)
-    {
-      <p>Current number: <code data-testid="sms-number">@sms.MaskedAddress</code> <span class="hint">(verified when entered)</span></p>
-    }
-    <form method="post" @formname="set-sms" @onsubmit="SetSmsAsync" class="stack">
-      <AntiforgeryToken />
-      <label>
-        @(Endpoint(ChannelType.Sms) is null ? "Add an SMS number" : "Change the SMS number")
-        <input name="Sms.Number" value="@Sms?.Number" type="tel" placeholder="+44 7700 900123" autocomplete="off" />
-      </label>
-      <span class="hint">International format: '+', the country code, then the number. Spaces, dashes and brackets are fine.</span>
-      <FieldError Errors="_errors" Field="@RecipientFields.PhoneNumber" />
-      <div><button type="submit">Save SMS number</button></div>
-    </form>
-    @if (Endpoint(ChannelType.Sms) is not null)
-    {
-      <form method="post" @formname="remove-sms" @onsubmit="RemoveSmsAsync">
+    <div>
+      <h3>SMS</h3>
+      @if (Endpoint(ChannelType.Sms) is { } sms)
+      {
+        <p>Current number: <code data-testid="sms-number">@sms.MaskedAddress</code> <span class="hint">(verified when entered)</span></p>
+      }
+      <form method="post" @formname="set-sms" @onsubmit="SetSmsAsync" class="stack">
         <AntiforgeryToken />
-        <button type="submit" class="secondary">Remove SMS number</button>
-        <span class="hint">It's also removed from this contact's routing.</span>
+        <div class="field">
+          <label for="sms-number">@(Endpoint(ChannelType.Sms) is null ? "Add an SMS number" : "Change the SMS number")</label>
+          <input id="sms-number" name="Sms.Number" value="@Sms?.Number" type="tel" placeholder="+44 7700 900123" autocomplete="off" aria-describedby="sms-hint error-@RecipientFields.PhoneNumber" aria-invalid="@FieldError.Invalid(_errors, RecipientFields.PhoneNumber)" />
+          <p class="hint" id="sms-hint">International format: '+', the country code, then the number. Spaces, dashes and brackets are fine.</p>
+          <FieldError Errors="_errors" Field="@RecipientFields.PhoneNumber" />
+        </div>
+        <div class="form-actions"><button type="submit">Save SMS number</button></div>
       </form>
-    }
+      @if (Endpoint(ChannelType.Sms) is not null)
+      {
+        <form method="post" @formname="remove-sms" @onsubmit="RemoveSmsAsync" class="inline-form">
+          <AntiforgeryToken />
+          <button type="submit" class="secondary">Remove SMS number</button>
+          <span class="hint">It's also removed from this contact's routing.</span>
+        </form>
+      }
+    </div>
 
-    <h3>Telegram</h3>
-    @if (Endpoint(ChannelType.Telegram) is not null)
-    {
-      <p data-testid="telegram-state">Linked</p>
-    }
-    else
-    {
-      <p data-testid="telegram-state">Not linked — coming soon. Telegram linking will add a link and QR code here.</p>
-    }
+    <div class="subsection">
+      <h3>Telegram</h3>
+      @if (Endpoint(ChannelType.Telegram) is not null)
+      {
+        <p data-testid="telegram-state"><span class="badge success">Linked</span></p>
+      }
+      else
+      {
+        <p data-testid="telegram-state"><span class="badge">Not linked — coming soon</span> <span class="hint">Telegram linking will add a link and QR code here.</span></p>
+      }
+    </div>
   </section>
 
-  <section>
+  <section class="card">
     <h2>Routing</h2>
     <p class="hint">Which channels each priority uses. Only channels this contact has an endpoint for can be chosen.</p>
-    <form method="post" @formname="set-routing" @onsubmit="SetRoutingAsync">
+    <form method="post" @formname="set-routing" @onsubmit="SetRoutingAsync" class="stack wide">
       <AntiforgeryToken />
-      <table class="list routing">
-        <thead>
-          <tr>
-            <th>Priority</th>
-            @foreach (var channel in Channels)
-            {
-              <th>@ChannelNames.Of(channel)</th>
-            }
-          </tr>
-        </thead>
-        <tbody>
-          @foreach (var priority in Enum.GetValues<Priority>())
-          {
+      <div class="table-wrap">
+        <table class="list routing">
+          <thead>
             <tr>
-              <td>@ChannelNames.Of(priority)</td>
+              <th scope="col">Priority</th>
               @foreach (var channel in Channels)
               {
-                var available = Endpoint(channel) is not null;
-                <td>
-                  <input type="checkbox" name="@RouteField(priority)" value="@ChannelNames.Of(channel).ToLowerInvariant()"
-                         aria-label="@ChannelNames.Of(priority) via @ChannelNames.Of(channel)"
-                         checked="@_contact.Routing[priority].Contains(channel)" disabled="@(!available)" />
-                  @if (!available)
-                  {
-                    <span class="hint">@(channel == ChannelType.Telegram ? "not linked" : "no number")</span>
-                  }
-                </td>
+                <th scope="col">@ChannelNames.Of(channel)</th>
               }
             </tr>
-          }
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            @foreach (var priority in Enum.GetValues<Priority>())
+            {
+              <tr>
+                <td>@ChannelNames.Of(priority)</td>
+                @foreach (var channel in Channels)
+                {
+                  var available = Endpoint(channel) is not null;
+                  <td>
+                    <span class="check">
+                      <input type="checkbox" name="@RouteField(priority)" value="@ChannelNames.Of(channel).ToLowerInvariant()"
+                             aria-label="@ChannelNames.Of(priority) via @ChannelNames.Of(channel)"
+                             checked="@_contact.Routing[priority].Contains(channel)" disabled="@(!available)" />
+                      @if (!available)
+                      {
+                        <span class="hint">@(channel == ChannelType.Telegram ? "not linked" : "no number")</span>
+                      }
+                    </span>
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
       <FieldError Errors="_errors" Field="@RecipientFields.Routing" />
-      <div><button type="submit">Save routing</button></div>
+      <div class="form-actions"><button type="submit">Save routing</button></div>
     </form>
   </section>
 
-  <section>
+  <section class="card danger-zone">
     <h2>Delete</h2>
-    <p><a href="contacts/@_contact.HandleName/delete" class="danger" data-testid="delete-link">Delete this contact…</a></p>
+    <p><a href="contacts/@_contact.HandleName/delete" class="button danger-quiet" data-testid="delete-link">Delete this contact…</a></p>
   </section>
 }
 

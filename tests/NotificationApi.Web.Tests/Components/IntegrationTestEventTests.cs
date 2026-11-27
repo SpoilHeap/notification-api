@@ -43,7 +43,7 @@ public sealed class IntegrationTestEventTests : IAsyncLifetime
 
         var html = await IntegrationPageTests.GetPageAsync(_client);
 
-        html.ShouldContain("<dd data-testid=\"webhook-state\">Registered</dd>");
+        html.ShouldContain("<span class=\"badge success\" data-testid=\"webhook-state\">Registered</span>");
         html.ShouldContain($"<code data-testid=\"webhook-url\">{_ha.Url}/api/webhook/abc</code>");
         html.ShouldContain("Send test event");
         html.ShouldNotContain(secret, Case.Sensitive);
@@ -59,7 +59,7 @@ public sealed class IntegrationTestEventTests : IAsyncLifetime
 
         var sent = _ha.LogEntries.ShouldHaveSingleItem().RequestMessage!;
         sent.Body!.ShouldContain("\"type\":\"webhook.test\"");
-        html.ShouldMatch("<p class=\"ok\" data-testid=\"test-event-result\">Test event evt_[0-9a-f]{32} delivered: Home Assistant answered HTTP 200.</p>");
+        html.ShouldMatch("<p class=\"notice success\" role=\"status\" data-testid=\"test-event-result\">Test event evt_[0-9a-f]{32} delivered: Home Assistant answered HTTP 200.</p>");
         _factory.Logs.Entries.ShouldContain(e => e.Contains("sent test event", StringComparison.Ordinal) && e.Contains(NotificationApiFactory.HaUserId, StringComparison.Ordinal));
     }
 
@@ -71,7 +71,7 @@ public sealed class IntegrationTestEventTests : IAsyncLifetime
 
         var html = await PostTestEventAsync();
 
-        html.ShouldMatch("<p class=\"error\" data-testid=\"test-event-result\">Test event evt_[0-9a-f]{32} was not delivered: the webhook answered HTTP 404.</p>");
+        html.ShouldMatch("<p class=\"notice error\" role=\"status\" data-testid=\"test-event-result\">Test event evt_[0-9a-f]{32} was not delivered: the webhook answered HTTP 404.</p>");
     }
 
     [Fact]

@@ -3,6 +3,11 @@
 All notable changes to this add-on are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Redesigned web UI in the style of Home Assistant's default theme: a top bar with tabs, cards, tables, pill buttons, coloured notices and status badges, and clearer validation errors. It follows the light or dark setting of the browser or phone, and works offline (no fonts or scripts are downloaded). On narrow screens, such as the Home Assistant mobile app, lists show one entry per block and nothing scrolls sideways.
+
 ## [0.4.0] - 2026-11-27
 
 ### Added
