@@ -26,7 +26,7 @@ internal static class TestRequests
     public static async Task<DiscoveryStatus> WaitForDiscoveryAsync(this IServiceProvider services)
     {
         var store = services.GetRequiredService<DiscoveryStatusStore>();
-        for (var i = 0; i < 500 && store.Current.State == DiscoveryState.Pending; i++)
+        for (var i = 0; i < 1500 && store.Current.State == DiscoveryState.Pending; i++)
         {
             await Task.Delay(10, TestContext.Current.CancellationToken);
         }

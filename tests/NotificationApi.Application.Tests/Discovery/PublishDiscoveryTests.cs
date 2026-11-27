@@ -7,7 +7,7 @@ using NotificationApi.Application.Tests.Fakes;
 
 namespace NotificationApi.Application.Tests.Discovery;
 
-public sealed class PublishDiscoveryTests
+public sealed class PublishDiscoveryTests : IDisposable
 {
     private readonly InMemoryApiClients _clients = new();
     private readonly FakeSecretProtector _protector = new();
@@ -143,19 +143,24 @@ public sealed class PublishDiscoveryTests
         _publisher.Messages.Count.ShouldBe(1);
     }
 
+    public void Dispose() => _publisher.Dispose();
+
     /// <summary>Moves the fake clock past one backoff delay and waits for the next attempt (no real sleeping).</summary>
     private async Task AdvanceUntilAttemptAsync(int attempt, TimeSpan delay)
     {
+        var ct = TestContext.Current.CancellationToken;
+        while (_publisher.Messages.Count < attempt - 1)
+        {
+            (await _publisher.NextCallAsync(ct)).ShouldBeTrue();
+        }
+
         _time.Advance(delay - TimeSpan.FromTicks(1));
-        await Task.Yield();
         _publisher.Messages.Count.ShouldBe(attempt - 1, "the retry must not fire before its delay");
 
         _time.Advance(TimeSpan.FromTicks(1));
-        for (var i = 0; i < 1000 && _publisher.Messages.Count < attempt; i++)
+        while (_publisher.Messages.Count < attempt)
         {
-            await Task.Yield();
+            (await _publisher.NextCallAsync(ct)).ShouldBeTrue($"attempt {attempt} did not happen after {delay}");
         }
-
-        _publisher.Messages.Count.ShouldBe(attempt);
     }
 }

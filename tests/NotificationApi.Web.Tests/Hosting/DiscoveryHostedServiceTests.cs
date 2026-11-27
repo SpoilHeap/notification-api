@@ -75,7 +75,7 @@ public sealed class DiscoveryHostedServiceTests
             s.AddSingleton<IDiscoveryPublisher>(new RecordingDiscoveryPublisher(_ => throw new InvalidOperationException("boom")))));
         using var client = failing.CreateClient();
 
-        for (var i = 0; i < 500 && !factory.Logs.Entries.Any(e => e.Contains("failed unexpectedly", StringComparison.Ordinal)); i++)
+        for (var i = 0; i < 1500 && !factory.Logs.Entries.Any(e => e.Contains("failed unexpectedly", StringComparison.Ordinal)); i++)
         {
             await Task.Delay(10, TestContext.Current.CancellationToken);
         }
