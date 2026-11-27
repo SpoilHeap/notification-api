@@ -24,6 +24,8 @@ Deliveries are therefore independent: each attempt is its own task with its own 
 - `queued` and `retrying` rows need nothing. They are in the database and are picked up as usual (a retry whose time passed while the add-on was down is due at once).
 - A row still `sending` was cut off mid-attempt by a crash or a forced stop. Whether the provider accepted it is unknown. It is marked **`failed`** with the error "The add-on stopped while this delivery was being sent, so it may or may not have arrived. It was not sent again.", and a `delivery.failed` event is queued. It is **not** sent again.
 
+An attempt that crashes **while the add-on keeps running** (for example, saving its outcome fails after the send) gets the same rule straight away rather than at the next start: the worker catches the exception and runs `AbandonDelivery` in a fresh scope, which marks the delivery `failed` ("An unexpected error interrupted this delivery…") with a `delivery.failed` event, and doesn't send it again. Only if that also fails (the database is unavailable) does the row stay `sending` until the next start.
+
 Graceful shutdown keeps that case rare. The worker stops claiming, then waits for attempts in flight to finish (each is bounded by its channel's HTTP timeout). Only if the host stops waiting are they cancelled, and only those are left `sending`.
 
 ## Alternatives considered

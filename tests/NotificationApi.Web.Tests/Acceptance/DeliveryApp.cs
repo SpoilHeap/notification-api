@@ -29,11 +29,13 @@ internal sealed class DeliveryApp : IAsyncDisposable
     public const string AliceChat = "1001";
     public const string BobChat = "1002";
 
-    private DeliveryApp(NotificationApiFactory factory, FakeTimeProvider? time)
+    private DeliveryApp(NotificationApiFactory factory, FakeTimeProvider? time, RecordingChannel telegram, RecordingChannel sms)
     {
         Factory = factory;
         Time = time;
-        Client = factory.CreateClient();
+        Telegram = telegram;
+        Sms = sms;
+        Client = factory.CreateClient(); // starts the host, worker included, so the fakes must exist already
     }
 
     public NotificationApiFactory Factory { get; }
@@ -43,9 +45,9 @@ internal sealed class DeliveryApp : IAsyncDisposable
     /// <summary>Set when the app runs on fake time.</summary>
     public FakeTimeProvider? Time { get; }
 
-    public RecordingChannel Telegram { get; } = new(ChannelType.Telegram);
+    public RecordingChannel Telegram { get; }
 
-    public RecordingChannel Sms { get; } = new(ChannelType.Sms);
+    public RecordingChannel Sms { get; }
 
     public string Token { get; private set; } = default!;
 
@@ -61,7 +63,9 @@ internal sealed class DeliveryApp : IAsyncDisposable
     {
         factory ??= new NotificationApiFactory();
         var time = fakeTime ? new FakeTimeProvider(DateTimeOffset.UtcNow) : null;
-        RecordingChannel? telegramFake = null, smsFake = null;
+        var clock = (TimeProvider?)time ?? TimeProvider.System;
+        var telegramFake = new RecordingChannel(ChannelType.Telegram) { Time = clock };
+        var smsFake = new RecordingChannel(ChannelType.Sms) { Time = clock };
         factory.TestServices.Add(services =>
         {
             if (time is not null)
@@ -75,10 +79,10 @@ internal sealed class DeliveryApp : IAsyncDisposable
                 services.RemoveAll<INotificationChannel>();
                 if (telegram)
                 {
-                    services.AddSingleton<INotificationChannel>(_ => telegramFake!);
+                    services.AddSingleton<INotificationChannel>(_ => telegramFake);
                 }
 
-                services.AddSingleton<INotificationChannel>(_ => smsFake!);
+                services.AddSingleton<INotificationChannel>(_ => smsFake);
             }
 
             if (!worker)
@@ -88,9 +92,7 @@ internal sealed class DeliveryApp : IAsyncDisposable
             }
         });
 
-        var app = new DeliveryApp(factory, time);
-        (telegramFake, smsFake) = (app.Telegram, app.Sms);
-        app.Telegram.Time = app.Sms.Time = (TimeProvider?)time ?? TimeProvider.System;
+        var app = new DeliveryApp(factory, time, telegramFake, smsFake);
         app.Token = await factory.GetApiTokenAsync();
         return app;
     }

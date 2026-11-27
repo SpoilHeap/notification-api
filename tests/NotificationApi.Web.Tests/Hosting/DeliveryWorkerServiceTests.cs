@@ -1,5 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using NotificationApi.Application.Common;
+using NotificationApi.Application.Events;
+using NotificationApi.Application.Notifications;
 using NotificationApi.Domain.Notifications;
 using NotificationApi.Web.Hosting;
 using NotificationApi.Web.Tests.Acceptance;
@@ -42,6 +45,48 @@ public sealed class DeliveryWorkerServiceTests
 
         await Task.Delay(100, TestContext.Current.CancellationToken);
         (await app.DeliveriesAsync(accepted.NotificationId)).Single().Status.ShouldBe(DeliveryStatus.Sending);
+    }
+
+    [Fact]
+    public async Task A_crashed_attempt_is_marked_failed_at_once_with_an_event_and_not_sent_again()
+    {
+        var saves = new FailingSaves();
+        var factory = new NotificationApiFactory();
+        factory.TestServices.Add(services =>
+        {
+            var inner = services.Single(d => d.ServiceType == typeof(IUnitOfWork));
+            services.Remove(inner);
+            services.AddScoped<IUnitOfWork>(sp => new FailingUnitOfWork((IUnitOfWork)ActivatorUtilities.CreateInstance(sp, inner.ImplementationType!), saves));
+        });
+        await using var app = await DeliveryApp.StartAsync(factory: factory);
+        await app.SeedFixturesAsync();
+        await app.RegisterWebhookAsync();
+        saves.FailWhen = () => app.Telegram.Calls > 0; // saving the outcome after the send fails once
+
+        var accepted = await app.NotifyAcceptedAsync(new { to = new[] { "contact:bob" }, message = "m", priority = "normal" });
+
+        var delivery = (await app.WaitForFinalAsync(accepted.NotificationId)).Single();
+        delivery.Status.ShouldBe(DeliveryStatus.Failed);
+        delivery.LastError.ShouldBe(AbandonDelivery.AbandonedError);
+        var events = await app.WaitForHaEventsAsync(1);
+        events.Single().GetProperty("type").GetString().ShouldBe(HaEventTypes.DeliveryFailed);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        app.Telegram.Calls.ShouldBe(1, "never sent again");
+    }
+
+    private sealed class FailingSaves
+    {
+        private int _failed;
+
+        public Func<bool> FailWhen { get; set; } = () => false;
+
+        public bool ShouldFail() => FailWhen() && Interlocked.Exchange(ref _failed, 1) == 0;
+    }
+
+    private sealed class FailingUnitOfWork(IUnitOfWork inner, FailingSaves saves) : IUnitOfWork
+    {
+        public Task SaveChangesAsync(CancellationToken cancellationToken) =>
+            saves.ShouldFail() ? throw new InvalidOperationException("The database is locked.") : inner.SaveChangesAsync(cancellationToken);
     }
 
     private static DeliveryWorkerService Worker(DeliveryApp app) =>

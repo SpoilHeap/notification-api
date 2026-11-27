@@ -67,6 +67,8 @@ internal sealed class DeliveryHarness
 
     public RecoverInterruptedDeliveries Recover => new(Store, Journal, Journal, Time, NullLogger<RecoverInterruptedDeliveries>.Instance);
 
+    public AbandonDelivery Abandon => new(Store, Journal, Journal, Time, NullLogger<AbandonDelivery>.Instance);
+
     public Group Group(string name, params Contact[] members)
     {
         var group = Domain.Recipients.Group.Create(Handle.Group(name), DisplayName.Create(name), Time.GetUtcNow());

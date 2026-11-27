@@ -145,6 +145,27 @@ internal sealed partial class DeliveryWorkerService(
 #pragma warning restore CA1031
         {
             LogAttemptFailed(logger, id, ex);
+            await AbandonAsync(id);
+        }
+    }
+
+    /// <summary>Marks a crashed attempt failed straight away, in a fresh scope, instead of waiting for the next start.</summary>
+    private async Task AbandonAsync(DeliveryId id)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<AbandonDelivery>().HandleAsync(id, _abort.Token);
+        }
+        catch (OperationCanceledException) when (_abort.IsCancellationRequested)
+        {
+            // Shutting down; the restart rule handles it.
+        }
+#pragma warning disable CA1031 // E.g. the database is unavailable: the restart rule handles it.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogAbandonFailed(logger, id, ex);
         }
     }
 
@@ -154,6 +175,9 @@ internal sealed partial class DeliveryWorkerService(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Looking for due deliveries failed; trying again shortly.")]
     private static partial void LogClaimFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "The attempt for delivery {DeliveryId} failed unexpectedly. It stays 'sending' until the next start, which marks it failed.")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "The attempt for delivery {DeliveryId} failed unexpectedly; marking it failed.")]
     private static partial void LogAttemptFailed(ILogger logger, DeliveryId deliveryId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Marking delivery {DeliveryId} failed after an unexpected error also failed. It stays 'sending' until the next start, which marks it failed.")]
+    private static partial void LogAbandonFailed(ILogger logger, DeliveryId deliveryId, Exception exception);
 }

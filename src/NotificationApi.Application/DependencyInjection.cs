@@ -71,6 +71,7 @@ public static class DependencyInjection
         services.AddScoped<ProcessDueDeliveries>();
         services.AddScoped<AttemptDelivery>();
         services.AddScoped<RecoverInterruptedDeliveries>();
+        services.AddScoped<AbandonDelivery>();
 
         services.AddScoped<GetSmsToSettings>();
         services.AddScoped<SaveSmsToSettings>();

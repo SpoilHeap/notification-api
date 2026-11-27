@@ -241,6 +241,24 @@ public sealed class DeliveryProcessingTests
     }
 
     [Fact]
+    public async Task Abandoning_a_crashed_attempt_fails_it_with_an_event_and_ignores_finished_ones()
+    {
+        var stuck = await _h.SendAsync(DeliveryHarness.Command(["contact:bob"]));
+        await _h.Process.HandleAsync(CancellationToken.None); // claimed, then the attempt "crashes"
+        _h.Journal.Steps.Clear();
+
+        var abandoned = await _h.Abandon.HandleAsync(stuck.Deliveries[0].DeliveryId, CancellationToken.None);
+
+        abandoned.ShouldBeTrue();
+        var failed = _h.Delivery(stuck.Deliveries[0].DeliveryId);
+        failed.Status.ShouldBe(DeliveryStatus.Failed);
+        failed.LastError.ShouldBe(AbandonDelivery.AbandonedError);
+        _h.Journal.Steps.ShouldBe(["save", $"enqueue {HaEventTypes.DeliveryFailed}"]);
+        _h.Telegram.Sent.ShouldBeEmpty();
+        (await _h.Abandon.HandleAsync(stuck.Deliveries[0].DeliveryId, CancellationToken.None)).ShouldBeFalse("already final");
+    }
+
+    [Fact]
     public async Task The_claim_batch_is_bounded()
     {
         for (var i = 0; i < ProcessDueDeliveries.BatchSize + 5; i++)
