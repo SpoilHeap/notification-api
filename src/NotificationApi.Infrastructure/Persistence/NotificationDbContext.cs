@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using NotificationApi.Domain.ApiClients;
 using NotificationApi.Domain.Audit;
 using NotificationApi.Domain.Instances;
+using NotificationApi.Domain.Notifications;
 using NotificationApi.Domain.Recipients;
+using NotificationApi.Domain.Settings;
 using NotificationApi.Infrastructure.Persistence.Configurations;
 
 namespace NotificationApi.Infrastructure.Persistence;
@@ -22,6 +24,12 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     public DbSet<Group> Groups => Set<Group>();
 
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
+
+    public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<Delivery> Deliveries => Set<Delivery>();
+
+    public DbSet<AppSettings> Settings => Set<AppSettings>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

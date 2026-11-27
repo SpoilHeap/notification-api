@@ -9,11 +9,15 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NotificationApi.Application.ApiAccess;
 using NotificationApi.Application.Audit;
+using NotificationApi.Application.Channels;
 using NotificationApi.Application.Common;
 using NotificationApi.Application.Discovery;
 using NotificationApi.Application.Events;
 using NotificationApi.Application.Instances;
+using NotificationApi.Application.Notifications;
 using NotificationApi.Application.Recipients;
+using NotificationApi.Application.Settings;
+using NotificationApi.Infrastructure.Channels;
 using NotificationApi.Infrastructure.Events;
 using NotificationApi.Infrastructure.Persistence;
 using NotificationApi.Infrastructure.Security;
@@ -39,6 +43,7 @@ public static class DependencyInjection
         AddSecretProtection(services);
         AddSupervisor(services, configuration);
         AddWebhook(services, configuration);
+        AddChannels(services, configuration);
         return services;
     }
 
@@ -57,6 +62,8 @@ public static class DependencyInjection
         services.AddScoped<IContactRepository, ContactRepository>();
         services.AddScoped<IGroupRepository, GroupRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<ISettingsRepository, SettingsRepository>();
     }
 
     /// <summary>Data Protection keys live in /data/keys, so encrypted secrets and antiforgery tokens survive restarts, updates and backup restores.</summary>
@@ -113,5 +120,30 @@ public static class DependencyInjection
             .RemoveAllLoggers()
             .AddResilienceHandler("webhook", (pipeline, context) =>
                 pipeline.AddTimeout(context.ServiceProvider.GetRequiredService<IOptions<WebhookOptions>>().Value.RequestTimeout));
+    }
+
+    /// <summary>
+    /// Delivery channels (spec §6). Each is a typed HttpClient with a timeout and no retry: retries belong to the
+    /// delivery algorithm, so attempts aren't counted twice (engineering_standards.md §2.4). The default HttpClient
+    /// logging is removed; the channel logs masked numbers only. Telegram comes with the linking feature.
+    /// </summary>
+    private static void AddChannels(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<SmsToOptions>()
+            .Bind(configuration.GetSection(SmsToOptions.SectionName))
+            .Validate(o => o.BaseUrl is { IsAbsoluteUri: true } url && (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps),
+                "SmsTo:BaseUrl must be an absolute http(s) URL.")
+            .Validate(o => o.RequestTimeout > TimeSpan.Zero, "SmsTo:RequestTimeout must be positive.")
+            .ValidateOnStart();
+
+        services.AddHttpClient<SmsToChannel>((sp, client) =>
+            {
+                var baseUrl = sp.GetRequiredService<IOptions<SmsToOptions>>().Value.BaseUrl.ToString();
+                client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");
+            })
+            .RemoveAllLoggers()
+            .AddResilienceHandler("sms-to", (pipeline, context) =>
+                pipeline.AddTimeout(context.ServiceProvider.GetRequiredService<IOptions<SmsToOptions>>().Value.RequestTimeout));
+        services.AddTransient<INotificationChannel>(sp => sp.GetRequiredService<SmsToChannel>());
     }
 }
