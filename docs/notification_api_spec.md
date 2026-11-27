@@ -1,6 +1,6 @@
-# Notification API: Spec (v1.3)
+# Notification API: Spec (v1.4)
 
-Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. v1.2 (2026-11-27) pins the exact wire details of §4.2–§4.4 (secret encoding, signature bytes, envelope format, ETag matching, the `webhook.test` event and a signature test vector), so both repos implement the same bytes. v1.3 (2026-11-27) fixes the contacts and groups decisions found while building them: what changes the recipients revision (§4.2), how `recipients.changed` is sent (§4.4), endpoint verification (§6), the data model and audit log (§7), and deletion and routing rules (§12.5). Source brief: `brief.md`. Build standards: `engineering_standards.md`.
+Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. v1.2 (2026-11-27) pins the exact wire details of §4.2–§4.4 (secret encoding, signature bytes, envelope format, ETag matching, the `webhook.test` event and a signature test vector), so both repos implement the same bytes. v1.3 (2026-11-27) fixes the contacts and groups decisions found while building them: what changes the recipients revision (§4.2), how `recipients.changed` is sent (§4.4), endpoint verification (§6), the data model and audit log (§7), and deletion and routing rules (§12.5). v1.4 (2026-11-27) settles the `/notify` request rules (§4.1) and the retry and SMS.to settings for delivery (§5, §6). Source brief: `brief.md`. Build standards: `engineering_standards.md`.
 
 ## 1. Guiding principle
 
@@ -86,14 +86,15 @@ POST /notify
 ```
 Errors: `400` unknown handle or invalid payload, `401` bad token, `422` zero deliveries resolved.
 
-**Open questions for the delivery feature** (raised while building the integration's `notification_api.send`; settle them before implementing `/notify`):
-1. How a 400 names unknown handles (AC09): `errors.to: ["Unknown handle: contact:bob"]`, per index (`errors["to[1]"]`), or an extension member such as `unknown_handles`. The integration currently shows every `errors` entry as `field: messages`.
-2. Status of an idempotent replay (AC12): 202 or 200. The integration accepts both.
-3. Optional fields sent as `null` versus omitted (`title`, `tag`, `source`, `idempotency_key`, `channels`). The integration omits them. The add-on should accept both.
-4. `channels: []`: 400, or "no override"? The integration treats it as no override and omits it.
-5. Whether `source` is required, and maximum lengths for `source`, `tag` and `idempotency_key`; whether `priority` is case-sensitive.
-6. The 422 body: a ProblemDetails with `detail`?
-7. Delivery `status` values in the 202: always `queued`?
+**Request rules** (v1.4, settled before building `/notify`):
+- **Required:** `to` (non-empty array of handles), `message` (1–4000 characters), `priority`. Everything else is optional.
+- **Optional fields:** `title` (≤ 200 characters), `channels`, `tag`, `source`, `idempotency_key` (each of the last three ≤ 200 characters). `null` means the same as omitted. `channels: []` means no override (the same as omitted). `source` is optional.
+- **Case:** `priority` (`low | normal | high | critical`) and channel names (`telegram | sms`) are exact lower case; `High` is a 400.
+- **`actions`:** reserved for v2. Omitted, `null` or `[]` is accepted; anything else is a 400 under `errors.actions`.
+- **Unknown handles (AC09):** 400 `ProblemDetails` with one message per unknown handle under `errors.to`, e.g. `{"errors": {"to": ["Unknown handle: contact:bob"]}}`. A malformed handle gets a message there too. Nothing is queued.
+- **Zero deliveries (AC08):** 422 `ProblemDetails` with `title: "No deliveries"` and a `detail` saying why (e.g. "None of the 1 resolved contact(s) has a verified endpoint for the selected channels."), with no `errors` object. Nothing is queued.
+- **202 body:** every delivery's `status` is `queued`. The later lifecycle (`queued → sending → sent`, or `→ retrying → … → failed`) is visible through events (§4.4) and `GET /notifications/{id}`. `deliveries` follows the order of §5 (handles in `to` order, depth-first, then the contact's channel order).
+- **Idempotency (AC12):** the key alone decides. Within 24 h of the accepted request, the same key returns the **original 202 response** (same status and body, statuses still `queued`) whatever the new payload is, and nothing new is sent. Requests that are rejected (400, 422) never record a key. After 24 h the key counts as new.
 
 ### 4.2 Lookups
 - `GET /ping`: token check for the integration's setup flow and connectivity polling.
@@ -179,7 +180,7 @@ In Python: `hmac.new(base64.b64decode(secret), b"1795796120." + body, hashlib.sh
 1. Expand the `to` handles depth-first into a list of contacts, keeping duplicates.
 2. For each contact, pick channels: (`channels` override, if given, or `routing[priority]`) ∩ verified endpoints.
 3. Create one Delivery per (contact, path, channel).
-4. Send. On failure, retry 3 times at 30 s intervals (configurable).
+4. Send. On failure, retry 3 times at 30 s intervals (configurable as app options `Delivery:MaxRetries` and `Delivery:RetryInterval`; no UI in v1).
 5. Final state `sent` or `failed`, with one event to HA.
 
 Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: message`.
@@ -187,7 +188,7 @@ Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: m
 ## 6. Channels (v1)
 
 **Telegram:** Bot API, with updates by long polling. Contacts link through a deep link / QR code `t.me/<bot>?start=<one-time-token>`. A Telegram endpoint can **only** be created by that linking flow (AC60–AC63): an admin can't type a chat id. Until a contact is linked, the UI shows Telegram as *Not linked — coming soon* (until the linking feature ships) and routing can't select it.
-**SMS.to:** REST API key and sender ID, E.164 numbers, "sent" is final. An SMS endpoint is **verified on entry**: an admin types the number, so `verified_at` is set when it's saved. Numbers are normalised by removing spaces, dashes and parentheses, and must then be `+` followed by 8–15 digits, the first not `0` (AC52).
+**SMS.to:** REST API key and sender ID, set on the web UI's Settings page (the key is stored encrypted and shown masked, AC70), E.164 numbers, "sent" is final. An SMS endpoint is **verified on entry**: an admin types the number, so `verified_at` is set when it's saved. Numbers are normalised by removing spaces, dashes and parentheses, and must then be `+` followed by 8–15 digits, the first not `0` (AC52).
 
 ## 7. Data model (sketch)
 
