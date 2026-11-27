@@ -1,0 +1,54 @@
+@page "/audit"
+@using System.Globalization
+@using NotificationApi.Application.Audit
+@inject GetAuditLog GetAuditLog
+
+<PageTitle>Audit log · Notification API</PageTitle>
+
+<h1>Audit log</h1>
+<p class="hint">Every change made in this web UI, newest first, with the Home Assistant user who made it. Phone numbers are masked.</p>
+
+@if (_page.Total == 0)
+{
+  <p data-testid="empty">Nothing has been recorded yet.</p>
+}
+else
+{
+  <table class="list" data-testid="audit">
+    <thead><tr><th>When (UTC)</th><th>User</th><th>Action</th><th>What</th><th>Details</th></tr></thead>
+    <tbody>
+      @foreach (var entry in _page.Entries)
+      {
+        <tr>
+          <td>@entry.OccurredAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td>
+          <td title="HA user id @entry.HaUserId">@entry.HaUserDisplayName</td>
+          <td>@entry.Action</td>
+          <td>@entry.EntityType <code>@entry.EntityKey</code></td>
+          <td>@entry.Summary</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+  <nav class="pager" aria-label="Pages">
+    @if (_page.Page > 1)
+    {
+      <a href="audit?page=@(_page.Page - 1)" data-testid="newer">← Newer</a>
+    }
+    <span>Page @_page.Page of @_page.PageCount (@_page.Total entries)</span>
+    @if (_page.Page < _page.PageCount)
+    {
+      <a href="audit?page=@(_page.Page + 1)" data-testid="older">Older →</a>
+    }
+  </nav>
+}
+
+@code {
+  private AuditLogPage _page = new([], 1, 1, 0);
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  [SupplyParameterFromQuery(Name = "page")] public int? PageNumber { get; set; }
+
+  protected override async Task OnInitializedAsync() =>
+    _page = await GetAuditLog.HandleAsync(PageNumber ?? 1, HttpContext.RequestAborted);
+}

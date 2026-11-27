@@ -1,0 +1,93 @@
+@page "/groups"
+@using NotificationApi.Application.Groups
+@using NotificationApi.Application.Recipients
+@inject ListGroups ListGroups
+@inject CreateGroup CreateGroup
+
+<PageTitle>Groups · Notification API</PageTitle>
+
+<h1>Groups</h1>
+
+@if (Deleted is not null)
+{
+  <p class="ok" data-testid="flash">Deleted group:@Deleted.</p>
+}
+
+@if (_groups.Count == 0)
+{
+  <p data-testid="empty">No groups yet. Create one below, then add contacts and other groups to it.</p>
+}
+else
+{
+  <table class="list" data-testid="groups">
+    <thead><tr><th>Handle</th><th>Name</th><th>Members</th></tr></thead>
+    <tbody>
+      @foreach (var group in _groups)
+      {
+        <tr>
+          <td><a href="groups/@group.HandleName"><code>@group.Handle</code></a></td>
+          <td>@group.Name</td>
+          <td>@Plural(group.ContactCount, "contact"), @Plural(group.GroupCount, "group")</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+}
+
+<section>
+  <h2>New group</h2>
+  <form method="post" @formname="create-group" @onsubmit="CreateAsync" class="stack">
+    <AntiforgeryToken />
+    <label>
+      Handle
+      <span class="with-prefix"><span class="prefix">group:</span><input name="NewGroup.Handle" value="@NewGroup?.Handle" maxlength="64" autocomplete="off" aria-describedby="handle-hint" /></span>
+    </label>
+    <span class="hint" id="handle-hint">Lower-case letters, digits and underscores. It can't be changed later.</span>
+    <FieldError Errors="_errors" Field="@RecipientFields.Handle" />
+    <label>
+      Name
+      <input name="NewGroup.Name" value="@NewGroup?.Name" maxlength="100" />
+    </label>
+    <FieldError Errors="_errors" Field="@RecipientFields.Name" />
+    <div><button type="submit">Create group</button></div>
+  </form>
+</section>
+
+@code {
+  private IReadOnlyList<GroupSummary> _groups = [];
+  private IReadOnlyDictionary<string, string[]>? _errors;
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  [SupplyParameterFromForm(FormName = "create-group")] private CreateForm? NewGroup { get; set; }
+
+  [SupplyParameterFromQuery] public string? Deleted { get; set; }
+
+  protected override async Task OnInitializedAsync()
+  {
+    NewGroup ??= new();
+    _groups = await ListGroups.HandleAsync(HttpContext.RequestAborted);
+  }
+
+  private async Task CreateAsync()
+  {
+    var result = await CreateGroup.HandleAsync(
+      HttpContext.User.ToAuditActor(), new CreateRecipientCommand(NewGroup?.Handle, NewGroup?.Name), HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      PostRedirectGet.SeeOther(HttpContext, $"groups/{result.Value.Name}?saved=created");
+      return;
+    }
+
+    _errors = result.Error.FieldErrors;
+  }
+
+  private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+
+  public sealed class CreateForm
+  {
+    public string? Handle { get; set; }
+
+    public string? Name { get; set; }
+  }
+}

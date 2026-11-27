@@ -1,0 +1,70 @@
+@page "/groups/{Name}/delete"
+@using NotificationApi.Application.Groups
+@inject NavigationManager Navigation
+@inject GetGroup GetGroup
+@inject DeleteGroup DeleteGroup
+
+<PageTitle>Delete group · Notification API</PageTitle>
+
+@if (_group is not null)
+{
+  <p><a href="groups/@_group.HandleName">← @_group.Name</a></p>
+  <h1>Delete @_group.Name?</h1>
+  <p>
+    <code>@_group.Handle</code> will stop working in Home Assistant: automations that send to it will fail.
+    Its members are not deleted: contacts and nested groups stay as they are.
+  </p>
+  @if (_group.MemberOf.Count > 0)
+  {
+    <p>It's a member of these groups, and will be removed from them:</p>
+    <ul data-testid="member-of">
+      @foreach (var parent in _group.MemberOf)
+      {
+        <li><code>@parent.Handle</code> (@parent.Name)</li>
+      }
+    </ul>
+  }
+  else
+  {
+    <p data-testid="member-of-none">It isn't a member of any other group.</p>
+  }
+  <form method="post" @formname="delete-group" @onsubmit="DeleteAsync">
+    <AntiforgeryToken />
+    <button type="submit" class="danger">Delete group</button>
+    <a href="groups/@_group.HandleName">Cancel</a>
+  </form>
+}
+
+@code {
+  private GroupDetails? _group;
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  [Parameter] public string Name { get; set; } = string.Empty;
+
+  protected override async Task OnInitializedAsync()
+  {
+    var result = await GetGroup.HandleAsync(Name, HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      _group = result.Value;
+    }
+    else
+    {
+      Navigation.NotFound();
+    }
+  }
+
+  private async Task DeleteAsync()
+  {
+    var result = await DeleteGroup.HandleAsync(HttpContext.User.ToAuditActor(), Name, HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      PostRedirectGet.SeeOther(HttpContext, $"groups?deleted={Name}");
+      return;
+    }
+
+    _group = null;
+    Navigation.NotFound();
+  }
+}

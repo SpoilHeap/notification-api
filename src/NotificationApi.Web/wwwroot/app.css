@@ -82,3 +82,112 @@ main {
 .ok {
   color: #2e7d32;
 }
+
+section {
+  margin-top: 1.5rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+table.list {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.list th,
+table.list td {
+  text-align: left;
+  padding: 0.35rem 0.75rem 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+table.list th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+form.stack {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 32rem;
+}
+
+form.stack label {
+  display: grid;
+  gap: 0.2rem;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+input[readonly] {
+  color: var(--muted);
+}
+
+input[type="checkbox"] {
+  padding: 0;
+}
+
+button {
+  cursor: pointer;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+button.danger {
+  background: #d32f2f;
+  border-color: #d32f2f;
+}
+
+a.danger {
+  color: #d32f2f;
+}
+
+.with-prefix {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.with-prefix input {
+  flex: 1;
+}
+
+.prefix {
+  color: var(--muted);
+  font-family: monospace;
+}
+
+.field-error {
+  color: #d32f2f;
+  font-size: 0.9em;
+}
+
+.endpoint + .endpoint::before {
+  content: " · ";
+  color: var(--muted);
+}
+
+.pager {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}

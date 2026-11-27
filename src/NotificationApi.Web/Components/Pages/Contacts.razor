@@ -1,0 +1,101 @@
+@page "/contacts"
+@using NotificationApi.Application.Common
+@using NotificationApi.Application.Contacts
+@using NotificationApi.Application.Recipients
+@inject ListContacts ListContacts
+@inject CreateContact CreateContact
+
+<PageTitle>Contacts · Notification API</PageTitle>
+
+<h1>Contacts</h1>
+
+@if (Deleted is not null)
+{
+  <p class="ok" data-testid="flash">Deleted contact:@Deleted.</p>
+}
+
+@if (_contacts.Count == 0)
+{
+  <p data-testid="empty">No contacts yet. Create one below.</p>
+}
+else
+{
+  <table class="list" data-testid="contacts">
+    <thead><tr><th>Handle</th><th>Name</th><th>Endpoints</th></tr></thead>
+    <tbody>
+      @foreach (var contact in _contacts)
+      {
+        <tr>
+          <td><a href="contacts/@contact.HandleName"><code>@contact.Handle</code></a></td>
+          <td>@contact.Name</td>
+          <td>
+            @if (contact.Endpoints.Count == 0)
+            {
+              <span class="hint">None</span>
+            }
+            @foreach (var endpoint in contact.Endpoints)
+            {
+              <span class="endpoint">@ChannelNames.Of(endpoint.Channel) @endpoint.MaskedAddress</span>
+            }
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+}
+
+<section>
+  <h2>New contact</h2>
+  <form method="post" @formname="create-contact" @onsubmit="CreateAsync" class="stack">
+    <AntiforgeryToken />
+    <label>
+      Handle
+      <span class="with-prefix"><span class="prefix">contact:</span><input name="NewContact.Handle" value="@NewContact?.Handle" maxlength="64" autocomplete="off" aria-describedby="handle-hint" /></span>
+    </label>
+    <span class="hint" id="handle-hint">Lower-case letters, digits and underscores. Home Assistant automations use it, so it can't be changed later.</span>
+    <FieldError Errors="_errors" Field="@RecipientFields.Handle" />
+    <label>
+      Name
+      <input name="NewContact.Name" value="@NewContact?.Name" maxlength="100" />
+    </label>
+    <FieldError Errors="_errors" Field="@RecipientFields.Name" />
+    <div><button type="submit">Create contact</button></div>
+  </form>
+</section>
+
+@code {
+  private IReadOnlyList<ContactSummary> _contacts = [];
+  private IReadOnlyDictionary<string, string[]>? _errors;
+
+  [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
+
+  [SupplyParameterFromForm(FormName = "create-contact")] private CreateForm? NewContact { get; set; }
+
+  [SupplyParameterFromQuery] public string? Deleted { get; set; }
+
+  protected override async Task OnInitializedAsync()
+  {
+    NewContact ??= new();
+    _contacts = await ListContacts.HandleAsync(HttpContext.RequestAborted);
+  }
+
+  private async Task CreateAsync()
+  {
+    var result = await CreateContact.HandleAsync(
+      HttpContext.User.ToAuditActor(), new CreateRecipientCommand(NewContact?.Handle, NewContact?.Name), HttpContext.RequestAborted);
+    if (result.IsSuccess)
+    {
+      PostRedirectGet.SeeOther(HttpContext, $"contacts/{result.Value.Name}?saved=created");
+      return;
+    }
+
+    _errors = result.Error.FieldErrors;
+  }
+
+  public sealed class CreateForm
+  {
+    public string? Handle { get; set; }
+
+    public string? Name { get; set; }
+  }
+}
