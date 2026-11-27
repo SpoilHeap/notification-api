@@ -1,5 +1,7 @@
+using System.Text.Json;
 using NotificationApi.Application;
 using NotificationApi.Application.ApiAccess;
+using NotificationApi.Application.Instances;
 using NotificationApi.Infrastructure;
 using NotificationApi.Infrastructure.Persistence;
 using NotificationApi.Web.Api;
@@ -25,6 +27,9 @@ builder.Services
     .AddNotificationApiAuth()
     .AddDiscovery(builder.Configuration);
 
+// The API contract is snake_case throughout (spec §4): instance_id, registered_at, idempotency_key.
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower);
+builder.Services.AddProblemDetails();
 builder.Services.AddRazorComponents(); // Static SSR only: no interactive render modes (ADR 0004).
 builder.Services.AddOpenApi(o => o.AddDocumentTransformer((document, _, _) =>
 {
@@ -42,6 +47,8 @@ await using (var scope = app.Services.CreateAsyncScope())
     // Provision the API token before serving, so the UI and discovery never race to create it.
     // A failure (unreadable token) is reported by discovery and on the Integration page.
     await scope.ServiceProvider.GetRequiredService<EnsureApiToken>().HandleAsync(CancellationToken.None);
+    // Created once with the database, then never changed (spec §4.2, AC44).
+    await scope.ServiceProvider.GetRequiredService<EnsureInstance>().HandleAsync(CancellationToken.None);
 }
 
 app.UseIngress(); // Must run before routing so PathBase applies to endpoint matching and link generation.

@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using NotificationApi.Application.ApiAccess;
 using NotificationApi.Application.Discovery;
@@ -40,5 +41,24 @@ internal static class TestRequests
         await using var scope = services.CreateAsyncScope();
         var token = await scope.ServiceProvider.GetRequiredService<EnsureApiToken>().HandleAsync(CancellationToken.None);
         return token.Value.Value;
+    }
+
+    /// <summary>A valid webhook secret: standard base64 of 32 random bytes, as the integration generates it.</summary>
+    public static string NewWebhookSecret() => Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+
+    /// <summary><c>PUT /api/v1/webhook</c> as the integration sends it.</summary>
+    public static async Task<HttpResponseMessage> PutWebhookAsync(this HttpClient client, string token, string url, string secret)
+    {
+        using var request = Api(HttpMethod.Put, "/api/v1/webhook", token);
+        request.Content = JsonContent.Create(new { url, secret });
+        return await client.SendAsync(request, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Runs a use case in its own scope, as an endpoint or hosted service would.</summary>
+    public static async Task<T> InScopeAsync<TService, T>(this IServiceProvider services, Func<TService, Task<T>> action)
+        where TService : notnull
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await action(scope.ServiceProvider.GetRequiredService<TService>());
     }
 }
