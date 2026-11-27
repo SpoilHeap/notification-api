@@ -27,7 +27,7 @@ public sealed partial class IntegrationPageTests(NotificationApiFactory factory)
     public async Task Revealing_shows_the_stored_token_and_disables_caching()
     {
         using var client = factory.CreateClient();
-        var form = ParseForm(await GetPageAsync(client));
+        var form = ParseForm(await GetPageAsync(client), "reveal-api-token");
 
         using var request = NotificationApiFactory.IngressRequest(HttpMethod.Post, "/integration");
         request.Content = new FormUrlEncodedContent(form);
@@ -45,7 +45,7 @@ public sealed partial class IntegrationPageTests(NotificationApiFactory factory)
     public async Task AC83_Reveal_without_an_antiforgery_token_is_rejected()
     {
         using var client = factory.CreateClient();
-        var form = ParseForm(await GetPageAsync(client)).Where(f => f.Key != "__RequestVerificationToken");
+        var form = ParseForm(await GetPageAsync(client), "reveal-api-token").Where(f => f.Key != "__RequestVerificationToken");
 
         using var request = NotificationApiFactory.IngressRequest(HttpMethod.Post, "/integration");
         request.Content = new FormUrlEncodedContent(form);
@@ -66,7 +66,7 @@ public sealed partial class IntegrationPageTests(NotificationApiFactory factory)
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
-    private static async Task<string> GetPageAsync(HttpClient client)
+    internal static async Task<string> GetPageAsync(HttpClient client)
     {
         using var request = NotificationApiFactory.IngressRequest(HttpMethod.Get, "/integration");
         using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -74,14 +74,19 @@ public sealed partial class IntegrationPageTests(NotificationApiFactory factory)
         return await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
     }
 
-    /// <summary>The hidden fields Blazor renders in the form: the antiforgery token and the form's handler name.</summary>
-    private static Dictionary<string, string> ParseForm(string html)
+    /// <summary>The hidden fields Blazor renders in the named form: the antiforgery token and the form's handler name.</summary>
+    internal static Dictionary<string, string> ParseForm(string html, string formName)
     {
-        var fields = HiddenInput().Matches(html).ToDictionary(m => m.Groups["name"].Value, m => WebUtility.HtmlDecode(m.Groups["value"].Value));
+        var form = FormElement().Matches(html).Select(m => m.Value).SingleOrDefault(f => f.Contains($"value=\"{formName}\"", StringComparison.Ordinal));
+        form.ShouldNotBeNull($"form '{formName}' not found");
+        var fields = HiddenInput().Matches(form).ToDictionary(m => m.Groups["name"].Value, m => WebUtility.HtmlDecode(m.Groups["value"].Value));
         fields.ShouldContainKey("__RequestVerificationToken");
-        fields.ShouldContainKey("_handler");
+        fields["_handler"].ShouldBe(formName);
         return fields;
     }
+
+    [GeneratedRegex("<form[^>]*>.*?</form>", RegexOptions.Singleline)]
+    private static partial Regex FormElement();
 
     [GeneratedRegex("<input type=\"hidden\" name=\"(?<name>[^\"]+)\" value=\"(?<value>[^\"]*)\"")]
     private static partial Regex HiddenInput();
