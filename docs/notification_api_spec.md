@@ -86,6 +86,15 @@ POST /notify
 ```
 Errors: `400` unknown handle or invalid payload, `401` bad token, `422` zero deliveries resolved.
 
+**Open questions for the delivery feature** (raised while building the integration's `notification_api.send`; settle them before implementing `/notify`):
+1. How a 400 names unknown handles (AC09): `errors.to: ["Unknown handle: contact:bob"]`, per index (`errors["to[1]"]`), or an extension member such as `unknown_handles`. The integration currently shows every `errors` entry as `field: messages`.
+2. Status of an idempotent replay (AC12): 202 or 200. The integration accepts both.
+3. Optional fields sent as `null` versus omitted (`title`, `tag`, `source`, `idempotency_key`, `channels`). The integration omits them. The add-on should accept both.
+4. `channels: []`: 400, or "no override"? The integration treats it as no override and omits it.
+5. Whether `source` is required, and maximum lengths for `source`, `tag` and `idempotency_key`; whether `priority` is case-sensitive.
+6. The 422 body: a ProblemDetails with `detail`?
+7. Delivery `status` values in the 202: always `queued`?
+
 ### 4.2 Lookups
 - `GET /ping`: token check for the integration's setup flow and connectivity polling.
   ```json
