@@ -6,6 +6,8 @@
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG TARGETARCH
+# The add-on version (release.yml passes config.yaml's version). /api/v1/ping reports it.
+ARG VERSION=0.0.0-dev
 WORKDIR /src
 
 # Restore with the FULL source present. Restoring with only the .csproj files (the usual
@@ -14,7 +16,7 @@ WORKDIR /src
 COPY . .
 RUN dotnet publish src/NotificationApi.Web/NotificationApi.Web.csproj \
       -c Release -a "$TARGETARCH" --no-self-contained -o /out \
-      -p:ContinuousIntegrationBuild=true
+      -p:ContinuousIntegrationBuild=true -p:Version="$VERSION"
 
 # Chiseled = minimal Ubuntu, no shell or package manager.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled

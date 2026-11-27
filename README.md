@@ -145,3 +145,7 @@ The HA integration (Python, installed through HACS) lives in a separate repo, `n
   [0010 xUnit v3 on MTP](docs/adr/0010-xunit-v3-on-microsoft-testing-platform.md) ·
   [0011 No NuGet lock files](docs/adr/0011-no-nuget-lock-files.md) ·
   [0012 API token hashed and encrypted](docs/adr/0012-api-token-hashed-and-encrypted.md)
+
+## Licence
+
+[MIT](LICENSE)

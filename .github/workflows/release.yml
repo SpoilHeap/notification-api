@@ -76,6 +76,8 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           push: true
+          build-args: |
+            VERSION=${{ needs.verify-version.outputs.version }}
           tags: |
             ${{ env.IMAGE_PREFIX }}-${{ matrix.arch }}:${{ needs.verify-version.outputs.version }}
             ${{ env.IMAGE_PREFIX }}-${{ matrix.arch }}:latest

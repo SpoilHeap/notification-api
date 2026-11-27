@@ -82,12 +82,6 @@ jobs:
             exit 1
           fi
 
-      # TODO(first API endpoint): diff the generated OpenAPI document against the checked-in
-      # openapi.json (engineering_standards.md §8 step 5). Skipped until /api/v1 exists.
-      - name: OpenAPI contract diff (not yet enabled)
-        if: false
-        run: echo "enable once /api/v1 exists"
-
   docker:
     name: Docker build, smoke test, scan
     runs-on: ubuntu-latest

@@ -53,7 +53,7 @@
           },
           "version": {
             "type": "string",
-            "description": "The add-on's informational version."
+            "description": "The add-on version, matching `config.yaml` in released images."
           }
         }
       },
