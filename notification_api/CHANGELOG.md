@@ -3,7 +3,7 @@
 All notable changes to this add-on are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-27
 
 ### Added
 - `PUT`, `GET` and `DELETE /api/v1/webhook`: the integration registers the webhook that events go to. The shared secret is stored encrypted and is never returned or logged.
