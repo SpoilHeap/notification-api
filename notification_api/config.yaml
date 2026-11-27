@@ -1,7 +1,7 @@
 # HA add-on configuration (spec §9.2). The image is prebuilt by .github/workflows/release.yml.
 # `version` must match the git tag (vX.Y.Z) and the image tag; release.yml enforces this.
 name: Notification API
-version: "0.5.0"
+version: "0.6.0"
 slug: notification_api
 description: Send Telegram and SMS notifications from Home Assistant to contacts and groups.
 url: https://github.com/SpoilHeap/notification-api

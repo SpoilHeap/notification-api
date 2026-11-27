@@ -3,7 +3,7 @@
 All notable changes to this add-on are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.6.0] - 2026-11-27
 
 ### Added
 - **Sending:** `POST /api/v1/notify` accepts a notification for contact and group handles and answers `202` at once with one delivery per contact, path and channel. Nested groups are expanded, duplicates are kept, and each contact's routing (or the request's `channels`) picks the channels, using only set-up endpoints. Unknown handles and invalid requests are refused with field errors (`400`), and a request that would deliver nothing gets `422`. Repeating an `idempotency_key` within 24 hours returns the first answer and sends nothing new.
