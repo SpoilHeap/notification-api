@@ -3,7 +3,7 @@
 All notable changes to this add-on are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-11-27
 
 ### Added
 - Supervisor discovery: on every start the add-on announces itself to Home Assistant as `notification_api`, with its host, port and API token, retrying a few times if the Supervisor isn't reachable.
