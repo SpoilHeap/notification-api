@@ -5,6 +5,8 @@
   <PropertyGroup>
     <!-- xUnit v3 test projects are executables running on Microsoft.Testing.Platform (global.json "test.runner"). -->
     <OutputType>Exe</OutputType>
+    <!-- CA1861 (cache constant arrays) is a performance rule; request bodies in tests read better inline. -->
+    <NoWarn>$(NoWarn);CA1861</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

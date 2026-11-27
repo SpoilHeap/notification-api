@@ -18,4 +18,7 @@ public enum AuditEntityType
     ApiToken,
 
     WebhookEvent,
+
+    /// <summary>A provider setting on the Settings page. The entity key names the provider, e.g. <c>sms_to</c>.</summary>
+    Settings,
 }

@@ -85,6 +85,34 @@ public sealed class Contact
         return true;
     }
 
+    /// <summary>
+    /// Adds or replaces the Telegram endpoint (re-linking replaces the old chat, AC63). Only the Telegram linking flow
+    /// may call this: the chat proved itself by pressing Start, so it is verified (spec §6). The chat id is Telegram's
+    /// integer id. Returns false when the chat is unchanged.
+    /// </summary>
+    public bool LinkTelegram(string chatId, DateTimeOffset now)
+    {
+        if (!long.TryParse(chatId, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out _))
+        {
+            throw new ArgumentException("A Telegram chat id is an integer.", nameof(chatId));
+        }
+
+        var existing = EndpointFor(ChannelType.Telegram);
+        if (existing is null)
+        {
+            _endpoints.Add(Endpoint.Create(ChannelType.Telegram, chatId, now));
+            return true;
+        }
+
+        if (existing.Address == chatId)
+        {
+            return false;
+        }
+
+        existing.Change(chatId, now);
+        return true;
+    }
+
     /// <summary>Removes the channel's endpoint, and the channel from every priority, so routing stays valid (AC53).</summary>
     public bool RemoveEndpoint(ChannelType channel)
     {
