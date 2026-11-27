@@ -3,6 +3,17 @@
 All notable changes to this add-on are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Sending:** `POST /api/v1/notify` accepts a notification for contact and group handles and answers `202` at once with one delivery per contact, path and channel. Nested groups are expanded, duplicates are kept, and each contact's routing (or the request's `channels`) picks the channels, using only set-up endpoints. Unknown handles and invalid requests are refused with field errors (`400`), and a request that would deliver nothing gets `422`. Repeating an `idempotency_key` within 24 hours returns the first answer and sends nothing new.
+- **Delivery in the background:** messages are queued in the database and sent by a background worker, each on its own. A failed send is retried 3 times, 30 seconds apart (`Delivery:MaxRetries`, `Delivery:RetryInterval`). Waiting messages survive restarts; a send cut off by a crash is reported as failed, never repeated.
+- **SMS through SMS.to**, with the API key and sender ID on the new **Settings** page. The key is stored encrypted and shown masked, and changes are recorded in the audit log.
+- `delivery.sent` and `delivery.failed` events to Home Assistant, with the notification and delivery ids, contact, via, channel, tag, source and (for failures) the error.
+
+### Changed
+- The database gets a new migration on start (notifications, deliveries and settings).
+
 ## [0.5.0] - 2026-11-27
 
 ### Changed

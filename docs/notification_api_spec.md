@@ -1,6 +1,6 @@
 # Notification API: Spec (v1.4)
 
-Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. v1.2 (2026-11-27) pins the exact wire details of §4.2–§4.4 (secret encoding, signature bytes, envelope format, ETag matching, the `webhook.test` event and a signature test vector), so both repos implement the same bytes. v1.3 (2026-11-27) fixes the contacts and groups decisions found while building them: what changes the recipients revision (§4.2), how `recipients.changed` is sent (§4.4), endpoint verification (§6), the data model and audit log (§7), and deletion and routing rules (§12.5). v1.4 (2026-11-27) settles the `/notify` request rules (§4.1) and the retry and SMS.to settings for delivery (§5, §6). Source brief: `brief.md`. Build standards: `engineering_standards.md`.
+Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. v1.2 (2026-11-27) pins the exact wire details of §4.2–§4.4 (secret encoding, signature bytes, envelope format, ETag matching, the `webhook.test` event and a signature test vector), so both repos implement the same bytes. v1.3 (2026-11-27) fixes the contacts and groups decisions found while building them: what changes the recipients revision (§4.2), how `recipients.changed` is sent (§4.4), endpoint verification (§6), the data model and audit log (§7), and deletion and routing rules (§12.5). v1.4 (2026-11-27) settles the `/notify` request rules (§4.1) and the retry and SMS.to settings for delivery (§5, §6), and, while building delivery, pins the id formats and response fields (§4.1), the `delivery.*` event data (§4.4), the delivery worker and restart rule (§5, [ADR 0014](adr/0014-persisted-delivery-queue.md)), the SMS.to wire format (§6) and the Notification, Delivery and Settings data (§7). Source brief: `brief.md`. Build standards: `engineering_standards.md`.
 
 ## 1. Guiding principle
 
@@ -77,10 +77,10 @@ POST /notify
 ```http
 202 Accepted
 {
-  "notification_id": "ntf_01H...",
+  "notification_id": "ntf_019ac63f8e407c3a9d1b2e4f5a6b7c8d",
   "deliveries": [
-    { "delivery_id": "dlv_1", "contact": "alice", "via": "group:family", "channel": "telegram", "status": "queued" },
-    { "delivery_id": "dlv_2", "contact": "alice", "via": "contact:alice", "channel": "telegram", "status": "queued" }
+    { "delivery_id": "dlv_019ac63f8e417d0c8a2b3c4d5e6f7a8b", "contact": "alice", "via": "group:family", "channel": "telegram", "status": "queued" },
+    { "delivery_id": "dlv_019ac63f8e417d0c8a2b3c4d5e6f7a8c", "contact": "alice", "via": "contact:alice", "channel": "telegram", "status": "queued" }
   ]
 }
 ```
@@ -94,6 +94,9 @@ Errors: `400` unknown handle or invalid payload, `401` bad token, `422` zero del
 - **Unknown handles (AC09):** 400 `ProblemDetails` with one message per unknown handle under `errors.to`, e.g. `{"errors": {"to": ["Unknown handle: contact:bob"]}}`. A malformed handle gets a message there too. Nothing is queued.
 - **Zero deliveries (AC08):** 422 `ProblemDetails` with `title: "No deliveries"` and a `detail` saying why (e.g. "None of the 1 resolved contact(s) has a verified endpoint for the selected channels."), with no `errors` object. Nothing is queued.
 - **202 body:** every delivery's `status` is `queued`. The later lifecycle (`queued → sending → sent`, or `→ retrying → … → failed`) is visible through events (§4.4) and `GET /notifications/{id}`. `deliveries` follows the order of §5 (handles in `to` order, depth-first, then the contact's channel order).
+- **Ids:** `notification_id` is `ntf_` and `delivery_id` is `dlv_`, each followed by 32 lower-case hex digits (a time-ordered UUID v7 without hyphens, like event ids in §4.4), e.g. `ntf_019ac63f8e407c3a9d1b2e4f5a6b7c8d`. Treat them as opaque strings.
+- **Delivery fields:** `contact` is the contact's handle **name** without the `contact:` prefix (`alice`); `via` is the full handle from `to` that reached it (`group:family`, or `contact:alice` when the contact was named directly); `channel` is `telegram` or `sms`. The 202 has no `Location` header.
+- **Malformed JSON** (not JSON, or a field of the wrong JSON type such as `"to": "contact:alice"`) is a 400 `ProblemDetails` without field errors.
 - **Idempotency (AC12):** the key alone decides. Within 24 h of the accepted request, the same key returns the **original 202 response** (same status and body, statuses still `queued`) whatever the new payload is, and nothing new is sent. Requests that are rejected (400, 422) never record a key. After 24 h the key counts as new.
 
 ### 4.2 Lookups
@@ -146,10 +149,18 @@ Types:
 |---|---|---|
 | `webhook.test` | `{}` | **Send test event** on the add-on's Integration page. Lets an admin check the webhook before contacts exist. The integration verifies it like any event, and may log or ignore it. |
 | `recipients.changed` | `{"revision": "18"}`: the revision the next `GET /recipients` returns (AC45) | Contact or group created, renamed or deleted (one event per change, sent after it's committed; see below) |
-| `delivery.sent` | AC30 fields | Delivery reached `sent` |
-| `delivery.failed` | AC31 fields, plus `error` | Delivery reached `failed` |
+| `delivery.sent` | AC30 fields, see below | Delivery reached `sent` |
+| `delivery.failed` | AC31 fields, plus `error`, see below | Delivery reached `failed` |
 
 Reserved for v2: `reply.received`, `action.pressed`. Receivers should ignore unknown types.
+
+**Delivery event data** (v1.4). Exactly these fields, in this order, sent once when a delivery reaches its final state (never for a retry):
+```json
+{"notification_id":"ntf_019ac63f8e407c3a9d1b2e4f5a6b7c8d","delivery_id":"dlv_019ac63f8e417d0c8a2b3c4d5e6f7a8b","contact":"alice","via":"group:family","channel":"telegram","tag":"front_door_alarm","source":"automation.front_door"}
+```
+- `notification_id`, `delivery_id`, `contact`, `via` and `channel` are the values of the 202 response (§4.1).
+- `tag` and `source` are the request's values, or JSON `null` when the request had none (both keys are always present).
+- `delivery.failed` adds `"error"` last: a human-readable string, the last attempt's error (at most 500 characters, phone numbers masked), e.g. `"SMS.to answered HTTP 401: Invalid API Key or Token"` or `"SMS.to is not configured"`.
 
 **Signature (AC33, AC37):** every call carries
 - `X-Notification-Api-Timestamp: <unix seconds>`: integer seconds since the Unix epoch, as a plain decimal string (`1795796120`).
@@ -185,10 +196,17 @@ In Python: `hmac.new(base64.b64decode(secret), b"1795796120." + body, hashlib.sh
 
 Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: message`.
 
+Details (v1.4, [ADR 0014](adr/0014-persisted-delivery-queue.md)):
+- **Formatting:** for Telegram, the title and message are HTML-escaped (`<`, `>`, `&`, quotes), so `<script>` arrives as text (AC24). With no title, Telegram gets just the escaped message and SMS just the message (AC25).
+- **Queue:** steps 1–3 run in the `/notify` request and save the notification and all its deliveries in one commit (status `queued`); step 4 runs in a background worker. The 202 never waits for a provider (AC13).
+- **Attempts:** the worker claims due deliveries (`queued`, or `retrying` whose next attempt is due), marks them `sending` and commits before sending. Each delivery is attempted in its own task, so a slow or failing delivery doesn't hold up any other (AC26). `attempts` counts started attempts: an always-failing channel gives `attempts = 4` (AC20). `Delivery:MaxRetries` is 0–20 and `Delivery:RetryInterval` must be positive.
+- **No channel:** if the add-on has no implementation for a delivery's channel (Telegram, until linking ships), the delivery fails at once (`attempts = 1`, no retry) with "The Telegram channel isn't available in this version of the add-on."
+- **Restart (AC23):** `queued` and `retrying` deliveries are kept in the database and processed after startup; a retry whose time passed while the add-on was down is due at once. A delivery still `sending` at startup was cut off mid-send, so it may or may not have arrived: it is marked `failed` (with a `delivery.failed` event) and **never sent again**. A graceful stop waits for sends in flight, so only a crash or a forced stop leaves one.
+
 ## 6. Channels (v1)
 
 **Telegram:** Bot API, with updates by long polling. Contacts link through a deep link / QR code `t.me/<bot>?start=<one-time-token>`. A Telegram endpoint can **only** be created by that linking flow (AC60–AC63): an admin can't type a chat id. Until a contact is linked, the UI shows Telegram as *Not linked — coming soon* (until the linking feature ships) and routing can't select it.
-**SMS.to:** REST API key and sender ID, set on the web UI's Settings page (the key is stored encrypted and shown masked, AC70), E.164 numbers, "sent" is final. An SMS endpoint is **verified on entry**: an admin types the number, so `verified_at` is set when it's saved. Numbers are normalised by removing spaces, dashes and parentheses, and must then be `+` followed by 8–15 digits, the first not `0` (AC52).
+**SMS.to:** REST API key and sender ID, set on the web UI's Settings page (the key is stored encrypted and shown masked, AC70), E.164 numbers, "sent" is final. Wire format (v1.4, from the official API reference at [developers.sms.to](https://developers.sms.to/), "Send single message"): `POST https://api.sms.to/sms/send` with `Authorization: Bearer <api key>` and JSON `{"to": "+353…", "message": "…", "sender_id": "…"}` (`sender_id` left out when none is set, so the account's default applies). Success is a 2xx with `{"success": true, "message_id": "…", "message": "Message is queued for sending! …"}`: the delivery is `sent` and `message_id` is stored (AC22). Errors are `{"success": false, "message": "…"}` with a 4xx status; the attempt fails with `SMS.to answered HTTP <status>: <message>`. A timeout (10 s, `SmsTo:RequestTimeout`) or connection error is a failed attempt, retried by §5. With no API key saved the attempt fails with "SMS.to is not configured". The key and sender ID are read on every send, so a change on the Settings page applies without a restart. The sender ID is optional: up to 11 letters, digits or spaces, or a number of up to 15 digits (optionally `+`). An SMS endpoint is **verified on entry**: an admin types the number, so `verified_at` is set when it's saved. Numbers are normalised by removing spaces, dashes and parentheses, and must then be `+` followed by 8–15 digits, the first not `0` (AC52).
 
 ## 7. Data model (sketch)
 
@@ -199,8 +217,9 @@ Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: m
 - Handles are unique per type, stored as text in their own tables: `contact:x` and `group:x` may coexist (AC57). Deleting a contact or group removes its memberships in other groups (AC56); deleting a group never deletes its members.
 - **ApiClient**: hashed token + encrypted token (ADR 0012), webhook URL + encrypted webhook secret + registered_at, last_used (one row in v1: HA)
 - **Instance**: a single row: `instance_id` (UUID v4, created on first start with the database) and the recipients `revision` counter (starts at 1)
-- **Notification**, **Delivery**: as before
-- **Settings**: retention_days (30), retry count/interval, provider credentials (encrypted)
+- **Notification** (v1.4): id (§4.1), `title`, `message`, `priority`, the `channels` override (empty when none), `tag`, `source`, `idempotency_key`, `created_at`. Immutable.
+- **Delivery** (v1.4): id, its notification, `position` (its place in the 202 list), `contact` and `via` handles (as text, so a delivery survives the contact's deletion), `channel`, the endpoint `address` copied at queue time, `status` (`queued`, `sending`, `sent`, `retrying`, `failed`), `attempts`, `last_error`, `provider_message_id` (the SMS.to `message_id`), `next_attempt_at`, `created_at`, `last_attempt_at`, `completed_at`. Deleting a notification deletes its deliveries. `GET /notifications/{id}` (AC41) reads these rows.
+- **Settings**: retention_days (30), provider credentials (encrypted). Retry count and interval are app options in v1 (§5), not settings. v1.4 stores one row with the SMS.to API key (Data Protection-encrypted, ADR 0012, plus its last 4 characters for the masked display when the key has at least 12) and the sender ID; saving or removing them on the Settings page is audited (entity type `Settings`, key `sms_to`), never with the key.
 - **AuditLog**: one entry per create, update or delete made in the web UI (contacts, groups, endpoints, routing, membership), plus **Reveal API token** and **Send test event** (AC82). Fields: timestamp, `ha_user_id` and display name (from the Ingress headers), action (`create`, `update`, `delete`, `reveal`, `send`), entity type, entity key (the handle, or another stable key) and a short summary. Phone numbers are always masked (`+3538****567`, engineering_standards.md §5), never stored in full. The UI shows it read-only, newest first, 50 per page. The retention purge (AC73) will delete old entries.
 
 ## 8. Authentication and authorisation
