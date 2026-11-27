@@ -31,6 +31,11 @@ recipient events. The **Integration** page shows the registered webhook, and **S
 sends a signed `webhook.test` event to it and shows Home Assistant's answer (the HTTP status, or the
 error). Events are best-effort: if Home Assistant can't be reached, the event is logged and dropped.
 
+Events need Home Assistant to serve **plain HTTP** on its own port. The webhook is called at
+`http://homeassistant:<port>` on the internal Supervisor network. If Home Assistant itself has
+`ssl_certificate` set, the certificate won't match that hostname and events fail. That setup isn't
+supported yet. Nabu Casa or a reverse proxy in front of Home Assistant is fine.
+
 ## Data and backups
 
 Contacts, settings and encrypted credentials are stored in the add-on's `/data`, which is included
