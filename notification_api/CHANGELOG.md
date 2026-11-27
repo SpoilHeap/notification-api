@@ -3,7 +3,7 @@
 All notable changes to this add-on are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-27
 
 ### Added
 - **Contacts** page: create a contact with a permanent handle (`contact:alice`) and a name, then set its SMS number and choose which channels each priority uses. SMS numbers are checked and stored in international (E.164) form, and only ever shown masked (`+3538****567`). Telegram shows "Not linked — coming soon" until Telegram linking arrives.
