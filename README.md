@@ -94,7 +94,7 @@ Warnings are errors (`Directory.Build.props`), so the build fails on analyzer fi
 4. CI checks that the tag matches `config.yaml`, pushes the multi-arch images (`amd64`, `aarch64`) to GHCR, and creates a GitHub Release.
 5. HA sees the new version in the add-on repository and offers the update.
 
-**First release only:** GHCR creates new packages as **private**, and the Supervisor pulls images anonymously. After the first release, open both packages (`notification-api-amd64`, `notification-api-aarch64`) under the GitHub profile → **Packages → Package settings → Change visibility → Public**. Otherwise installs fail with "unauthorized" / "manifest unknown".
+**Image visibility:** the Supervisor pulls images anonymously, so the GHCR packages must be public. The images carry an `org.opencontainers.image.source` label that links them to this public repo, and since v0.1.0 both packages have been publicly pullable with no manual step. If a pull ever fails with "unauthorized" / "manifest unknown", check **Packages → Package settings → Change visibility** for `notification-api-amd64` and `notification-api-aarch64`.
 
 ## Install on Home Assistant
 

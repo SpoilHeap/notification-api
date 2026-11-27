@@ -9,7 +9,8 @@ which channels to use and holds every phone number, chat ID and provider key, so
 1. **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, add
    `https://github.com/SpoilHeap/notification-api`.
 2. Install **Notification API** and start it.
-3. Open **Notifications** in the sidebar. It's visible to administrators only.
+3. On the add-on's **Info** tab, switch on **Show in sidebar**, then open **Notifications** from the
+   sidebar. It's visible to administrators only. You can also use **Open Web UI** on the same tab.
 
 ## Configuration
 
