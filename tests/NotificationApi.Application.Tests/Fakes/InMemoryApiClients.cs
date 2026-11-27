@@ -11,6 +11,9 @@ internal sealed class InMemoryApiClients : IApiClientRepository, IUnitOfWork
 
     public int Saves { get; private set; }
 
+    public Task<ApiClient?> FindByIdAsync(ApiClientId id, CancellationToken cancellationToken) =>
+        Task.FromResult(Clients.SingleOrDefault(c => c.Id == id));
+
     public Task<ApiClient?> FindByNameAsync(string name, CancellationToken cancellationToken) =>
         Task.FromResult(Clients.SingleOrDefault(c => c.Name == name));
 

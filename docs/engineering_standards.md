@@ -145,7 +145,7 @@ Required coverage of behaviour, not just lines:
   - Fallback deny policy: an unauthenticated request to every endpoint → 401 (enumerate endpoints automatically).
 - **Ingress auth:** request from `172.30.32.2` with headers → allowed. From any other IP → rejected, **even with valid headers**. Missing headers → rejected.
 - **Ingress path base:** pages render with the correct `<base href>` when `X-Ingress-Path` is set.
-- **Webhook publisher:** posts the correct event payload and secret to WireMock.
+- **Webhook publisher:** posts the correct event payload to WireMock, with a signature the test verifies from the raw body it received (never the secret itself). Timeouts and error statuses are reported, not retried.
 
 ### 4.4 Acceptance tests
 

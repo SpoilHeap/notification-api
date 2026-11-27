@@ -2,8 +2,12 @@
 @using System.Security.Claims
 @using NotificationApi.Application.ApiAccess
 @using NotificationApi.Application.Discovery
+@using NotificationApi.Application.Events
+@using NotificationApi.Application.Webhooks
 @inject GetIntegrationDetails GetIntegrationDetails
 @inject RevealApiToken RevealApiToken
+@inject GetWebhook GetWebhook
+@inject SendTestEvent SendTestEvent
 
 <PageTitle>Integration · Notification API</PageTitle>
 
@@ -72,14 +76,67 @@
   @* TODO(token rotation): add a "Rotate token" action that replaces the token and re-publishes discovery. Out of scope for now. *@
 </section>
 
+<section>
+  <h2>Events webhook</h2>
+  <p>
+    The integration registers a webhook when it's set up, and the add-on sends delivery and recipient events to it,
+    signed with a secret only the integration knows.
+  </p>
+  <dl class="details">
+    <dt>Status</dt>
+    @if (_webhook is not null)
+    {
+      <dd data-testid="webhook-state">Registered</dd>
+      <dt>URL</dt>
+      <dd><code data-testid="webhook-url">@_webhook.Url.OriginalString</code></dd>
+      <dt>Registered</dt>
+      <dd>@_webhook.RegisteredAt.ToString("u", System.Globalization.CultureInfo.InvariantCulture)</dd>
+    }
+    else
+    {
+      <dd data-testid="webhook-state">Not registered. Set up the integration in Home Assistant first.</dd>
+    }
+  </dl>
+  @if (_webhook is not null)
+  {
+    <form method="post" @formname="send-test-event" @onsubmit="SendTestEventAsync">
+      <AntiforgeryToken />
+      <button type="submit">Send test event</button>
+    </form>
+  }
+  @if (_testOutcome is not null)
+  {
+    <p class="@(_testOutcome.Kind == HaEventOutcomeKind.Delivered ? "ok" : "error")" data-testid="test-event-result">@OutcomeText(_testOutcome)</p>
+  }
+</section>
+
 @code {
   private IntegrationDetails _details = default!;
   private string? _token;
   private string? _revealError;
+  private WebhookRegistration? _webhook;
+  private HaEventOutcome? _testOutcome;
 
   [CascadingParameter] public HttpContext HttpContext { get; set; } = default!;
 
-  protected override void OnInitialized() => _details = GetIntegrationDetails.Handle();
+  protected override async Task OnInitializedAsync()
+  {
+    _details = GetIntegrationDetails.Handle();
+    _webhook = await GetWebhook.ForHomeAssistantAsync(HttpContext.RequestAborted);
+  }
+
+  private async Task SendTestEventAsync()
+  {
+    var haUserId = HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+    _testOutcome = await SendTestEvent.HandleAsync(haUserId, HttpContext.RequestAborted);
+  }
+
+  private static string OutcomeText(HaEventOutcome outcome) => outcome.Kind switch
+  {
+    HaEventOutcomeKind.Delivered => $"Test event {outcome.EventId} delivered: Home Assistant answered HTTP {outcome.StatusCode}.",
+    HaEventOutcomeKind.NotRegistered => "No webhook is registered, so the test event was not sent.",
+    _ => $"Test event {outcome.EventId} was not delivered: {outcome.Error?.TrimEnd('.')}.",
+  };
 
   private async Task RevealAsync()
   {

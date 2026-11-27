@@ -26,6 +26,16 @@ If Home Assistant doesn't offer the integration under **Settings → Devices & s
 open the add-on's **Integration** page. It shows whether discovery worked and, for manual setup, the
 host, port and API token (click **Reveal API token**). Treat the token like a password.
 
+When the integration is set up, it registers a webhook so the add-on can send it delivery and
+recipient events. The **Integration** page shows the registered webhook, and **Send test event**
+sends a signed `webhook.test` event to it and shows Home Assistant's answer (the HTTP status, or the
+error). Events are best-effort: if Home Assistant can't be reached, the event is logged and dropped.
+
+Events need Home Assistant to serve **plain HTTP** on its own port. The webhook is called at
+`http://homeassistant:<port>` on the internal Supervisor network. If Home Assistant itself has
+`ssl_certificate` set, the certificate won't match that hostname and events fail. That setup isn't
+supported yet. Nabu Casa or a reverse proxy in front of Home Assistant is fine.
+
 ## Data and backups
 
 Contacts, settings and encrypted credentials are stored in the add-on's `/data`, which is included

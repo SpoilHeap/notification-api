@@ -5,7 +5,11 @@ using Microsoft.Extensions.Options;
 using NotificationApi.Application.ApiAccess;
 using NotificationApi.Application.Common;
 using NotificationApi.Application.Discovery;
+using NotificationApi.Application.Events;
+using NotificationApi.Application.Instances;
+using NotificationApi.Application.Recipients;
 using NotificationApi.Application.Tests.Fakes;
+using NotificationApi.Application.Webhooks;
 
 namespace NotificationApi.Application.Tests;
 
@@ -23,6 +27,8 @@ public sealed class DependencyInjectionTests
             .AddSingleton<IUnitOfWork>(clients)
             .AddSingleton<ISecretProtector, FakeSecretProtector>()
             .AddSingleton<IDiscoveryPublisher, FakeDiscoveryPublisher>()
+            .AddSingleton<IInstanceRepository, InMemoryInstances>()
+            .AddSingleton<IHaEventPublisher, FakeHaEventPublisher>()
             .Configure<DiscoveryOptions>(o => o.Host = "addon-host")
             .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         await using var scope = provider.CreateAsyncScope();
@@ -31,6 +37,14 @@ public sealed class DependencyInjectionTests
         scope.ServiceProvider.GetRequiredService<VerifyApiToken>().ShouldNotBeNull();
         scope.ServiceProvider.GetRequiredService<RevealApiToken>().ShouldNotBeNull();
         scope.ServiceProvider.GetRequiredService<GetIntegrationDetails>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<EnsureInstance>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<GetRecipients>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<RecordRecipientsChange>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<RegisterWebhook>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<GetWebhook>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<RemoveWebhook>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<PublishHaEvent>().ShouldNotBeNull();
+        scope.ServiceProvider.GetRequiredService<SendTestEvent>().ShouldNotBeNull();
         var status = await scope.ServiceProvider.GetRequiredService<PublishDiscovery>().HandleAsync(TestContext.Current.CancellationToken);
 
         status.State.ShouldBe(DiscoveryState.Published);

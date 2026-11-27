@@ -4,14 +4,18 @@ using Microsoft.AspNetCore.DataProtection.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NotificationApi.Application.ApiAccess;
 using NotificationApi.Application.Common;
 using NotificationApi.Application.Discovery;
+using NotificationApi.Application.Events;
+using NotificationApi.Application.Instances;
 using NotificationApi.Infrastructure.Persistence;
 using NotificationApi.Infrastructure.Security;
 using NotificationApi.Infrastructure.Supervisor;
+using NotificationApi.Infrastructure.Webhooks;
 using Polly;
 
 namespace NotificationApi.Infrastructure;
@@ -31,6 +35,7 @@ public static class DependencyInjection
         AddPersistence(services);
         AddSecretProtection(services);
         AddSupervisor(services, configuration);
+        AddWebhook(services, configuration);
         return services;
     }
 
@@ -45,6 +50,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
         services.AddScoped<IApiClientRepository, ApiClientRepository>();
+        services.AddScoped<IInstanceRepository, InstanceRepository>();
     }
 
     /// <summary>Data Protection keys live in /data/keys, so encrypted secrets and antiforgery tokens survive restarts, updates and backup restores.</summary>
@@ -81,5 +87,24 @@ public static class DependencyInjection
             })
             .AddResilienceHandler("supervisor", (pipeline, context) =>
                 pipeline.AddTimeout(context.ServiceProvider.GetRequiredService<IOptions<SupervisorOptions>>().Value.RequestTimeout));
+    }
+
+    /// <summary>
+    /// HA webhook events: one attempt with a timeout and no retry (AC34). The default HttpClient logging is removed
+    /// because it writes the full URL, whose path holds HA's webhook id; failures are logged by <c>PublishHaEvent</c>.
+    /// </summary>
+    private static void AddWebhook(IServiceCollection services, IConfiguration configuration)
+    {
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddOptions<WebhookOptions>()
+            .Bind(configuration.GetSection(WebhookOptions.SectionName))
+            .Validate(o => o.RequestTimeout > TimeSpan.Zero, "Webhook:RequestTimeout must be positive.")
+            .ValidateOnStart();
+
+        services.AddHttpClient<IHaEventPublisher, WebhookEventPublisher>()
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers()
+            .AddResilienceHandler("webhook", (pipeline, context) =>
+                pipeline.AddTimeout(context.ServiceProvider.GetRequiredService<IOptions<WebhookOptions>>().Value.RequestTimeout));
     }
 }

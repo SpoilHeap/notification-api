@@ -4,6 +4,8 @@ using NotificationApi.Application.ApiAccess;
 using NotificationApi.Application.Channels;
 using NotificationApi.Application.Common;
 using NotificationApi.Application.Discovery;
+using NotificationApi.Application.Events;
+using NotificationApi.Application.Instances;
 
 namespace NotificationApi.ArchitectureTests;
 
@@ -63,6 +65,8 @@ public sealed class LayeringTests
         typeof(ISecretProtector),
         typeof(IApiClientRepository),
         typeof(IUnitOfWork),
+        typeof(IInstanceRepository),
+        typeof(IHaEventPublisher),
     ];
 
     [Theory]

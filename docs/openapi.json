@@ -11,7 +11,7 @@
         "tags": [
           "v1"
         ],
-        "summary": "Checks the API token. The HA integration calls this during setup.",
+        "summary": "Checks the API token and identifies the installation. The HA integration calls this during setup.",
         "operationId": "Ping",
         "responses": {
           "401": {
@@ -36,14 +36,201 @@
           }
         }
       }
+    },
+    "/api/v1/recipients": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Every contact and group, with no PII. Send If-None-Match with the last ETag to get 304 when nothing changed.",
+        "operationId": "GetRecipients",
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientsResponse"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not Modified"
+          }
+        }
+      }
+    },
+    "/api/v1/webhook": {
+      "put": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Registers the webhook that events are POSTed to, replacing any earlier one.",
+        "operationId": "RegisterWebhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "The registered webhook URL (never the secret). 404 when none is registered.",
+        "operationId": "GetWebhook",
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Removes the webhook, which stops events. Succeeds when none is registered.",
+        "operationId": "RemoveWebhook",
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "HttpValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
       "PingResponse": {
         "required": [
           "ok",
-          "version"
+          "version",
+          "instance_id"
         ],
         "type": "object",
         "properties": {
@@ -54,6 +241,10 @@
           "version": {
             "type": "string",
             "description": "The add-on version, matching `config.yaml` in released images."
+          },
+          "instance_id": {
+            "type": "string",
+            "description": "A lower-case UUID created with the database and never changed (spec §4.2, AC44)."
           }
         }
       },
@@ -92,6 +283,89 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "RecipientResponse": {
+        "required": [
+          "handle",
+          "name",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string",
+            "description": "E.g. `group:family`. Never changes."
+          },
+          "name": {
+            "type": "string",
+            "description": "The display name."
+          },
+          "type": {
+            "type": "string",
+            "description": "`contact` or `group`."
+          }
+        }
+      },
+      "RecipientsResponse": {
+        "required": [
+          "revision",
+          "recipients"
+        ],
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string",
+            "description": "Opaque. Changes whenever a contact or group is created, renamed or deleted. Also sent as the ETag."
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipientResponse"
+            },
+            "description": "Every contact and group."
+          }
+        }
+      },
+      "RegisterWebhookRequest": {
+        "required": [
+          "url",
+          "secret"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Absolute http(s) URL that events are POSTed to."
+          },
+          "secret": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "Standard base64 of at least 32 random bytes. The HMAC key is the decoded bytes."
+          }
+        }
+      },
+      "WebhookResponse": {
+        "required": [
+          "url",
+          "registered_at"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The registered URL."
+          },
+          "registered_at": {
+            "type": "string",
+            "description": "When it was registered (UTC).",
+            "format": "date-time"
           }
         }
       }

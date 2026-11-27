@@ -6,6 +6,9 @@ namespace NotificationApi.Infrastructure.Persistence;
 
 internal sealed class ApiClientRepository(NotificationDbContext db) : IApiClientRepository
 {
+    public Task<ApiClient?> FindByIdAsync(ApiClientId id, CancellationToken cancellationToken) =>
+        db.ApiClients.SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
+
     public Task<ApiClient?> FindByNameAsync(string name, CancellationToken cancellationToken) =>
         db.ApiClients.SingleOrDefaultAsync(c => c.Name == name, cancellationToken);
 

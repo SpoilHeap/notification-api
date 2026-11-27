@@ -1,6 +1,6 @@
-# Notification API: Spec (v1.1)
+# Notification API: Spec (v1.2)
 
-Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. Source brief: `brief.md`. Build standards: `engineering_standards.md`.
+Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. v1.2 (2026-11-27) pins the exact wire details of §4.2–§4.4 (secret encoding, signature bytes, envelope format, ETag matching, the `webhook.test` event and a signature test vector), so both repos implement the same bytes. Source brief: `brief.md`. Build standards: `engineering_standards.md`.
 
 ## 1. Guiding principle
 
@@ -57,6 +57,7 @@ HA never sees phone numbers, chat IDs or provider credentials. It only uses stab
 ## 4. Public API (used by the HA integration)
 
 Base: `http://<addon-hostname>:8080/api/v1`, authenticated with `Authorization: Bearer <api-token>`.
+JSON field names are snake_case throughout (requests, responses and webhook events). Errors are RFC 9457 `ProblemDetails` (`application/problem+json`). Validation errors (400) add an `errors` object keyed by the request's JSON field name, e.g. `{"errors": {"secret": ["…"]}}`.
 
 ### 4.1 Send
 ```http
@@ -90,13 +91,15 @@ Errors: `400` unknown handle or invalid payload, `401` bad token, `422` zero del
   ```json
   { "ok": true, "version": "0.2.0", "instance_id": "8d3f0c3e-…" }
   ```
-  `instance_id` is a UUID generated once, when the database is created, and never changed. The integration uses it to tell "same add-on, new token" (keep entities) from "add-on reinstalled with a fresh database" (recipients may be different).
+  `instance_id` is a random (version 4) UUID in lower-case hyphenated form, generated once, when the database is created, and never changed. The integration uses it to tell "same add-on, new token" (keep entities) from "add-on reinstalled with a fresh database" (recipients may be different).
 - `GET /recipients`: every contact and group, with **no PII**.
   ```json
   { "revision": "17", "recipients": [ { "handle": "group:family", "name": "Family", "type": "group" } ] }
   ```
-  - `revision` is an opaque string that changes whenever any contact or group is created, renamed or deleted. The response carries it as a strong `ETag` too.
-  - With `If-None-Match: "<revision>"`, the add-on answers **304 Not Modified** with no body when nothing changed. Polling is then cheap.
+  - `revision` is an opaque string that changes whenever any contact or group is created, renamed or deleted. A new database starts at `"1"`. Treat it as opaque: compare for equality only.
+  - Every 200 and 304 response carries it as a strong `ETag`: the revision in double quotes, e.g. `ETag: "17"`.
+  - With `If-None-Match` set to the current ETag (`"17"`), the add-on answers **304 Not Modified** with no body. Any other value, or no header, gets 200. Matching follows RFC 9110 (a list of tags, `*`, and `W/"17"` all match). Polling is then cheap.
+  - Until contacts and groups exist, `recipients` is always `[]`.
 - `GET /notifications/{id}`, `GET /channels`
 
 `GET /health` is at the root (`http://<addon-hostname>:8080/health`), not under `/api/v1`. It's anonymous, for the Docker HEALTHCHECK.
@@ -108,28 +111,56 @@ PUT /webhook
 { "url": "http://homeassistant:8123/api/webhook/<webhook_id>", "secret": "<base64, ≥ 32 random bytes>" }
 → 204 No Content
 ```
-- One registration per API client: a new `PUT` replaces the old one. `DELETE /webhook` removes it (204), and the integration calls it when its config entry is removed.
-- Validation: `url` must be absolute `http`/`https`, and `secret` must decode to ≥ 32 bytes. Otherwise 400 `ProblemDetails`.
-- The secret is stored encrypted (like the API token, ADR 0012) and is never returned by any endpoint or logged.
-- `GET /webhook` returns `{ "url": "…", "registered_at": "…" }` (no secret), or 404 when nothing is registered.
+- One registration per API client: a new `PUT` replaces the old one and sets `registered_at`. `DELETE /webhook` removes it and answers 204 even when nothing was registered (idempotent). The integration calls it when its config entry is removed.
+- `secret` is **standard base64** (RFC 4648 §4, with `=` padding, no whitespace) of 32 to 512 random bytes. The integration should generate 32 bytes, e.g. `base64.b64encode(secrets.token_bytes(32))`. The **HMAC key is the decoded bytes**, not the base64 text.
+- Validation: `url` must be an absolute `http`/`https` URL of at most 2048 characters, and `secret` must be valid standard base64 decoding to 32–512 bytes. Otherwise **400** with field errors under `errors.url` / `errors.secret`, and the previous registration is kept unchanged (AC36).
+- The secret is stored encrypted (like the API token, ADR 0012) and is never returned by any endpoint or logged. The add-on logs only the URL's origin (scheme, host, port), because the path holds HA's webhook id.
+- `GET /webhook` returns `{ "url": "…", "registered_at": "2026-11-27T16:15:20.1234567Z" }` (ISO 8601, UTC; no secret), or 404 `ProblemDetails` when nothing is registered.
 
 ### 4.4 Events (API → HA)
 The add-on POSTs events to the registered webhook URL. With no registration, events are dropped (logged at Debug).
 
-**Envelope:**
+**Envelope:** a `POST` with `Content-Type: application/json` (UTF-8, no BOM) and this body:
 ```json
-{ "id": "evt_01H…", "type": "delivery.sent", "occurred_at": "2026-11-27T16:15:20Z", "data": { … } }
+{"id":"evt_019ac63f8e407c3a9d1b2e4f5a6b7c8d","type":"delivery.sent","occurred_at":"2026-11-27T16:15:20Z","data":{…}}
 ```
-v1 types: `delivery.sent`, `delivery.failed`, `recipients.changed` (`data: { "revision": "18" }`).
-Reserved for v2: `reply.received`, `action.pressed`.
+- `id`: `evt_` followed by 32 lower-case hex digits (a time-ordered UUID v7 without hyphens). Unique per event. Receivers must accept any `evt_`-prefixed string (a 26-character ULID is also allowed) and treat it as opaque.
+- `type`: one of the types below.
+- `occurred_at`: ISO 8601 in UTC with a `Z` suffix, to the second (`2026-11-27T16:15:20Z`).
+- `data`: an object, specific to the type, with snake_case field names.
 
-**Signature (AC33):** every call carries
-- `X-Notification-Api-Timestamp: <unix seconds>`
-- `X-Notification-Api-Signature: sha256=<hex HMAC-SHA256(secret, "<timestamp>.<raw body>")>`
+Types:
 
-The receiver recomputes the HMAC over the **raw** body bytes and compares in constant time. It rejects the call if the signature doesn't match, or if the timestamp is more than **300 s** from its clock (replay protection). It deduplicates on `id`.
+| Type | `data` | Producer |
+|---|---|---|
+| `webhook.test` | `{}` | **Send test event** on the add-on's Integration page. Lets an admin check the webhook before contacts exist. The integration verifies it like any event, and may log or ignore it. |
+| `recipients.changed` | `{"revision": "18"}`: the revision the next `GET /recipients` returns (AC45) | Contact or group created, renamed or deleted |
+| `delivery.sent` | AC30 fields | Delivery reached `sent` |
+| `delivery.failed` | AC31 fields, plus `error` | Delivery reached `failed` |
 
-**Delivery:** best-effort, one attempt with a 5 s timeout, no retry (AC34). The integration therefore doesn't rely on `recipients.changed` alone: it also polls `GET /recipients` with `If-None-Match` (§11).
+Reserved for v2: `reply.received`, `action.pressed`. Receivers should ignore unknown types.
+
+**Signature (AC33, AC37):** every call carries
+- `X-Notification-Api-Timestamp: <unix seconds>`: integer seconds since the Unix epoch, as a plain decimal string (`1795796120`).
+- `X-Notification-Api-Signature: sha256=<hex>`: the **lower-case hex** HMAC-SHA256 where
+  - the key is the **decoded bytes** of the registered base64 `secret`, and
+  - the message is the ASCII bytes of the timestamp header value followed by `.`, then the **exact raw body bytes** of the request.
+
+The add-on serialises the body once and sends exactly the bytes it signed. The receiver recomputes the HMAC over the raw body bytes (before any JSON parsing) and compares in constant time. It rejects the call if the signature doesn't match, or if the timestamp is more than **300 s** from its clock (replay protection). It deduplicates on `id`.
+
+**Test vector.** Both repos test against this:
+
+| Input | Value |
+|---|---|
+| `secret` (base64) | `AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=` (the 32 bytes `0x00, 0x01, …, 0x1f`) |
+| Timestamp | `1795796120` (2026-11-27T16:15:20Z) |
+| Body (exact bytes: 114 bytes of UTF-8, no trailing newline) | `{"id":"evt_019ac63f8e407c3a9d1b2e4f5a6b7c8d","type":"webhook.test","occurred_at":"2026-11-27T16:15:20Z","data":{}}` |
+| Signed message | `1795796120.` followed by the body |
+| `X-Notification-Api-Signature` | `sha256=c2fcb3fbbe01d66932b4d9a193e368ef70bf42739a894e6dd48b98d5d50911ff` |
+
+In Python: `hmac.new(base64.b64decode(secret), b"1795796120." + body, hashlib.sha256).hexdigest()`.
+
+**Delivery:** best-effort, one attempt with a 5 s timeout, no retry (AC34). A 2xx answer counts as delivered. Any other status (redirects aren't followed), a timeout or a connection error is a failure, logged at Warning with the event type, id and HTTP status, never the secret or the body. With no registration the event is dropped and logged at Debug. The integration therefore doesn't rely on `recipients.changed` alone: it also polls `GET /recipients` with `If-None-Match` (§11).
 
 ## 5. Delivery algorithm (v1)
 
@@ -150,7 +181,7 @@ Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: m
 
 - **Contact**, **Endpoint**, **Group**, **GroupMember**: as before
 - **ApiClient**: hashed token + encrypted token (ADR 0012), webhook URL + encrypted webhook secret + registered_at, last_used (one row in v1: HA)
-- **Instance**: `instance_id` (UUID, created with the database) and the recipients `revision` counter
+- **Instance**: a single row: `instance_id` (UUID v4, created on first start with the database) and the recipients `revision` counter (starts at 1)
 - **Notification**, **Delivery**: as before
 - **Settings**: retention_days (30), retry count/interval, provider credentials (encrypted)
 - **AuditLog**: ha_user_id + display name (from the Ingress headers), action, entity, timestamp

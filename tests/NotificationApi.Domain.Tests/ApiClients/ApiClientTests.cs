@@ -73,4 +73,67 @@ public sealed class ApiClientTests
         a.ShouldNotBe(b);
         a.ToString().ShouldBe(a.Value.ToString());
     }
+
+    [Fact]
+    public void RegisterWebhook_sets_the_url_secret_and_time_and_replaces_an_earlier_one()
+    {
+        var client = ApiClient.Create("home_assistant", ApiToken.Generate(), "protected", Now);
+        client.HasWebhook.ShouldBeFalse();
+
+        client.RegisterWebhook(new Uri("http://homeassistant:8123/api/webhook/first"), "secret-1", Now);
+        client.RegisterWebhook(new Uri("https://ha.example/api/webhook/second"), "secret-2", Now.AddMinutes(1));
+
+        client.HasWebhook.ShouldBeTrue();
+        client.WebhookUrl.ShouldBe(new Uri("https://ha.example/api/webhook/second"));
+        client.ProtectedWebhookSecret.ShouldBe("secret-2");
+        client.WebhookRegisteredAt.ShouldBe(Now.AddMinutes(1));
+    }
+
+    [Theory]
+    [InlineData("ftp://homeassistant/api/webhook/x")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("mailto:someone@example.com")]
+    public void RegisterWebhook_rejects_non_http_urls(string url)
+    {
+        var client = ApiClient.Create("home_assistant", ApiToken.Generate(), "protected", Now);
+
+        Should.Throw<ArgumentException>(() => client.RegisterWebhook(new Uri(url), "secret", Now));
+        client.HasWebhook.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void RegisterWebhook_requires_a_url_and_a_protected_secret()
+    {
+        var client = ApiClient.Create("home_assistant", ApiToken.Generate(), "protected", Now);
+
+        Should.Throw<ArgumentNullException>(() => client.RegisterWebhook(null!, "secret", Now));
+        Should.Throw<ArgumentException>(() => client.RegisterWebhook(new Uri("http://ha/"), " ", Now));
+        Should.Throw<ArgumentException>(() => client.RegisterWebhook(new Uri("/relative", UriKind.Relative), "secret", Now));
+    }
+
+    [Fact]
+    public void IsValidWebhookUrl_accepts_only_absolute_http_urls_within_the_length_limit()
+    {
+        ApiClient.IsValidWebhookUrl(new Uri("http://homeassistant:8123/api/webhook/x")).ShouldBeTrue();
+        ApiClient.IsValidWebhookUrl(new Uri("https://ha.example/api/webhook/x")).ShouldBeTrue();
+        ApiClient.IsValidWebhookUrl(null).ShouldBeFalse();
+        ApiClient.IsValidWebhookUrl(new Uri("/api/webhook/x", UriKind.Relative)).ShouldBeFalse();
+        ApiClient.IsValidWebhookUrl(new Uri("http://ha/" + new string('a', ApiClient.MaxWebhookUrlLength))).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void RemoveWebhook_clears_the_registration_and_reports_whether_anything_changed()
+    {
+        var client = ApiClient.Create("home_assistant", ApiToken.Generate(), "protected", Now);
+        client.RemoveWebhook().ShouldBeFalse();
+        client.RegisterWebhook(new Uri("http://homeassistant:8123/api/webhook/x"), "secret", Now);
+
+        client.RemoveWebhook().ShouldBeTrue();
+
+        client.HasWebhook.ShouldBeFalse();
+        client.WebhookUrl.ShouldBeNull();
+        client.ProtectedWebhookSecret.ShouldBeNull();
+        client.WebhookRegisteredAt.ShouldBeNull();
+        client.RemoveWebhook().ShouldBeFalse();
+    }
 }

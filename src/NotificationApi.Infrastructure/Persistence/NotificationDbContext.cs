@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NotificationApi.Domain.ApiClients;
+using NotificationApi.Domain.Instances;
 
 namespace NotificationApi.Infrastructure.Persistence;
 
@@ -10,6 +11,8 @@ namespace NotificationApi.Infrastructure.Persistence;
 public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext> options) : DbContext(options)
 {
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
+
+    public DbSet<Instance> Instances => Set<Instance>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

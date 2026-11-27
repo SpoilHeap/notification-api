@@ -3,6 +3,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using NotificationApi.Application.ApiAccess;
 using NotificationApi.Application.Discovery;
+using NotificationApi.Application.Events;
+using NotificationApi.Application.Instances;
+using NotificationApi.Application.Recipients;
+using NotificationApi.Application.Webhooks;
 
 namespace NotificationApi.Application;
 
@@ -23,6 +27,16 @@ public static class DependencyInjection
         services.AddScoped<RevealApiToken>();
         services.AddScoped<PublishDiscovery>();
         services.AddScoped<GetIntegrationDetails>();
+
+        services.AddScoped<EnsureInstance>();
+        services.AddScoped<GetRecipients>();
+        services.AddScoped<RecordRecipientsChange>();
+
+        services.AddScoped<RegisterWebhook>();
+        services.AddScoped<GetWebhook>();
+        services.AddScoped<RemoveWebhook>();
+        services.AddScoped<PublishHaEvent>();
+        services.AddScoped<SendTestEvent>();
         return services;
     }
 }
