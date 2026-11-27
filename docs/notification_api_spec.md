@@ -1,6 +1,6 @@
-# Notification API: Spec (v1.0)
+# Notification API: Spec (v1.1)
 
-Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. Source brief: `brief.md`. Build standards: `engineering_standards.md`.
+Status: **final for v1** (2026-11-23). Spikes passed on HA OS (2026-11-25), see §13. v1.1 (2026-11-27) adds the integration contract found while building `notification-api-ha`: §4.2–§4.4, AC35–AC37 and AC43–AC45. Source brief: `brief.md`. Build standards: `engineering_standards.md`.
 
 ## 1. Guiding principle
 
@@ -86,14 +86,50 @@ POST /notify
 Errors: `400` unknown handle or invalid payload, `401` bad token, `422` zero deliveries resolved.
 
 ### 4.2 Lookups
-`GET /recipients`, `GET /notifications/{id}`, `GET /channels`, `GET /health`
+- `GET /ping`: token check for the integration's setup flow and connectivity polling.
+  ```json
+  { "ok": true, "version": "0.2.0", "instance_id": "8d3f0c3e-…" }
+  ```
+  `instance_id` is a UUID generated once, when the database is created, and never changed. The integration uses it to tell "same add-on, new token" (keep entities) from "add-on reinstalled with a fresh database" (recipients may be different).
+- `GET /recipients`: every contact and group, with **no PII**.
+  ```json
+  { "revision": "17", "recipients": [ { "handle": "group:family", "name": "Family", "type": "group" } ] }
+  ```
+  - `revision` is an opaque string that changes whenever any contact or group is created, renamed or deleted. The response carries it as a strong `ETag` too.
+  - With `If-None-Match: "<revision>"`, the add-on answers **304 Not Modified** with no body when nothing changed. Polling is then cheap.
+- `GET /notifications/{id}`, `GET /channels`
 
-`GET /ping` returns `{"ok": true, "version": "…"}`. The integration calls it during setup to check its token.
+`GET /health` is at the root (`http://<addon-hostname>:8080/health`), not under `/api/v1`. It's anonymous, for the Docker HEALTHCHECK.
 
-### 4.3 Events (API → HA)
-The add-on POSTs to the HA webhook that the integration registered (`http://homeassistant:8123/api/webhook/<id>`).
-v1: `delivery.sent`, `delivery.failed`, `recipients.changed`.
+### 4.3 Webhook registration (integration → API)
+The integration builds its own webhook URL (it knows HA's port and SSL setup), generates the shared secret, and registers both:
+```http
+PUT /webhook
+{ "url": "http://homeassistant:8123/api/webhook/<webhook_id>", "secret": "<base64, ≥ 32 random bytes>" }
+→ 204 No Content
+```
+- One registration per API client: a new `PUT` replaces the old one. `DELETE /webhook` removes it (204), and the integration calls it when its config entry is removed.
+- Validation: `url` must be absolute `http`/`https`, and `secret` must decode to ≥ 32 bytes. Otherwise 400 `ProblemDetails`.
+- The secret is stored encrypted (like the API token, ADR 0012) and is never returned by any endpoint or logged.
+- `GET /webhook` returns `{ "url": "…", "registered_at": "…" }` (no secret), or 404 when nothing is registered.
+
+### 4.4 Events (API → HA)
+The add-on POSTs events to the registered webhook URL. With no registration, events are dropped (logged at Debug).
+
+**Envelope:**
+```json
+{ "id": "evt_01H…", "type": "delivery.sent", "occurred_at": "2026-11-27T16:15:20Z", "data": { … } }
+```
+v1 types: `delivery.sent`, `delivery.failed`, `recipients.changed` (`data: { "revision": "18" }`).
 Reserved for v2: `reply.received`, `action.pressed`.
+
+**Signature (AC33):** every call carries
+- `X-Notification-Api-Timestamp: <unix seconds>`
+- `X-Notification-Api-Signature: sha256=<hex HMAC-SHA256(secret, "<timestamp>.<raw body>")>`
+
+The receiver recomputes the HMAC over the **raw** body bytes and compares in constant time. It rejects the call if the signature doesn't match, or if the timestamp is more than **300 s** from its clock (replay protection). It deduplicates on `id`.
+
+**Delivery:** best-effort, one attempt with a 5 s timeout, no retry (AC34). The integration therefore doesn't rely on `recipients.changed` alone: it also polls `GET /recipients` with `If-None-Match` (§11).
 
 ## 5. Delivery algorithm (v1)
 
@@ -113,7 +149,8 @@ Formatting: Telegram gets HTML `<b>title</b>\nmessage`, SMS gets plain `title: m
 ## 7. Data model (sketch)
 
 - **Contact**, **Endpoint**, **Group**, **GroupMember**: as before
-- **ApiClient**: hashed token, webhook URL + secret, last_used (one row in v1: HA)
+- **ApiClient**: hashed token + encrypted token (ADR 0012), webhook URL + encrypted webhook secret + registered_at, last_used (one row in v1: HA)
+- **Instance**: `instance_id` (UUID, created with the database) and the recipients `revision` counter
 - **Notification**, **Delivery**: as before
 - **Settings**: retention_days (30), retry count/interval, provider credentials (encrypted)
 - **AuditLog**: ha_user_id + display name (from the Ingress headers), action, entity, timestamp
@@ -188,7 +225,7 @@ The real file is [`notification_api/config.yaml`](../notification_api/config.yam
 1. The user adds the GitHub repo as an add-on repository and installs the add-on.
 2. On first start, the add-on generates the API token and calls `POST http://supervisor/discovery` with `{service: "notification_api", config: {host, port, token}}`.
 3. HA shows *"New device discovered: Notification API"*, and the integration's `async_step_hassio` takes the config.
-4. The user clicks **Submit**. The integration stores the config, registers its webhook with the API, and creates the entities.
+4. The user clicks **Submit**. The integration checks the token with `GET /ping` (and stores `instance_id`), registers its webhook with `PUT /webhook` (§4.3), loads `GET /recipients`, and creates the entities.
 
 Discovery for a **custom** (HACS) integration works through `async_step_hassio` (spike 1, §13). The fallback is a manual config flow: the add-on's **Integration** page shows the discovery status (uuid, last error, or skipped), and the host, port and API token behind a **Reveal** button.
 
@@ -213,9 +250,12 @@ Layering, testing and CI rules are in `engineering_standards.md`. Summary:
 
 ## 11. HA integration (Python, separate GitHub repo, HACS)
 
-- `config_flow.py`: `async_step_hassio` (discovery), plus a manual fallback.
-- Entities: one `notify.<handle>` per recipient. Action: `notification_api.send`.
-- Webhook receiver → HA events `notification_api_delivery_sent` / `_failed`. Entities refresh on `recipients.changed`.
+- `config_flow.py`: `async_step_hassio` (discovery), plus a manual fallback and reauth. One config entry per HA install (fixed unique_id), updated in place by later discovery.
+- Entities: one `notify.<handle>` per recipient, keyed by the immutable handle (AC51). Action: `notification_api.send`.
+- Webhook receiver: verifies the signature and timestamp (§4.4), deduplicates on event `id`, and fires HA events `notification_api_delivery_sent` / `_failed`.
+- Recipient refresh: immediately on `recipients.changed`, **and** by polling `GET /recipients` with `If-None-Match` every 30 s, because webhook events are best-effort (AC34, AC93).
+- `instance_id` change (add-on reinstalled with a fresh database): reload the entry and rebuild entities from `/recipients`.
+- On entry removal: `DELETE /webhook`.
 
 ## 12. Acceptance criteria (v1)
 
@@ -265,14 +305,20 @@ Default fixtures used below: contact **Alice** (Telegram verified, SMS verified;
 | AC32 | **When** a contact or group is created, renamed or deleted, **then** a `recipients.changed` event is POSTed. | A |
 | AC33 | Every webhook call carries the shared secret signature, and the HA integration rejects calls without a valid one. | I (both repos) |
 | AC34 | **When** the HA webhook is unreachable, **then** delivery outcomes are unaffected and the failure is logged. (Events are best-effort, with no retry in v1.) | A |
+| AC35 | **When** the integration calls `PUT /webhook` with a valid URL and secret, **then** the API returns 204, `GET /webhook` shows the URL (never the secret), and later events go to that URL. A second `PUT` replaces the first. `DELETE /webhook` stops events. | A |
+| AC36 | `PUT /webhook` with a relative or non-http(s) URL, or a secret shorter than 32 bytes, returns **400** `ProblemDetails`, and the previous registration is kept. | A |
+| AC37 | Every event carries `X-Notification-Api-Timestamp` and `X-Notification-Api-Signature: sha256=<HMAC-SHA256(secret, "<timestamp>.<raw body>")>`. The integration rejects a bad signature, a timestamp more than 300 s off, or a repeated event `id`. | I (both repos) |
 
 ### 12.4 Lookups
 
 | ID | Given / When / Then | Test |
 |---|---|---|
-| AC40 | `GET /recipients` returns every contact and group as `{handle, name, type}` and **no phone numbers, chat IDs or routing**. | A |
+| AC40 | `GET /recipients` returns `{revision, recipients: [{handle, name, type}]}` for every contact and group, and **no phone numbers, chat IDs or routing**. | A |
 | AC41 | `GET /notifications/{id}` returns the current status of every delivery. An unknown id returns 404. | A |
 | AC42 | `GET /channels` reports each channel as `configured` / `not_configured`. | A |
+| AC43 | `GET /recipients` returns its `revision` as a strong `ETag`. With `If-None-Match` set to the current revision it returns **304** with no body. After any contact or group is created, renamed or deleted, the revision changes and the same request returns 200. | A |
+| AC44 | `GET /ping` returns `{ok, version, instance_id}`. `instance_id` stays the same across restarts and updates, and changes only when the database is recreated. | A |
+| AC45 | `recipients.changed` events carry the new `revision`, matching the next `GET /recipients`. | A |
 
 ### 12.5 Contacts and groups (web UI)
 
